@@ -106,6 +106,7 @@ def run_controlled_fixture(directory: Path, embedder: Embedder) -> ControlledRun
         "chunk_overlap_tokens": 64,
         "chunk_tokens": 512,
         "dense_model": embedder.model_name,
+        "dense_model_revision": getattr(embedder, "model_revision", "unversioned-test-double"),
         "hybrid": {"method": "rrf", "rank_constant": 60},
         "latency_reference": {
             "order": "query_id_ascending",

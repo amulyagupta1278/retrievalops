@@ -21,7 +21,7 @@
   "run_1": {
     "active_policy": "hybrid",
     "compiler_reason": "Selected the highest passing nDCG@10, then Recall@10, lower p95 latency, lower estimated cost, and policy name.",
-    "configuration_hash": "a91535986fc5cf5126843e7a757b05e724969dde3cd85948b01df0e92c9d156c",
+    "configuration_hash": "d6dd8cecbec93e63e750a26b81b01b52d810905f461e50e75c630399d16ad9f4",
     "fixture_hash": "26b3509cbcba6b3cf67a82364ffc6370deec9bbad2b9ee899333bd88d767aab6",
     "fixture_id": "government-schemes-pilot-v2-seed42",
     "index_hashes": {
@@ -33,11 +33,11 @@
       {
         "metrics": {
           "estimated_cost_usd_per_1k_queries": 0.0,
-          "index_time_ms": 17.900042003020644,
+          "index_time_ms": 17.279291001614183,
           "mrr_at_10": 0.9411764705882353,
           "ndcg_at_10": 0.8291612772453213,
-          "p50_latency_ms": 0.5179894942557439,
-          "p95_latency_ms": 0.8436460047960281,
+          "p50_latency_ms": 0.5078434987808578,
+          "p95_latency_ms": 0.6882710003992543,
           "recall_at_10": 0.7813567151802446
         },
         "passed": false,
@@ -49,11 +49,11 @@
       {
         "metrics": {
           "estimated_cost_usd_per_1k_queries": 0.0,
-          "index_time_ms": 14085.749499994563,
+          "index_time_ms": 10418.463957990753,
           "mrr_at_10": 0.842483660130719,
           "ndcg_at_10": 0.6817438327904632,
-          "p50_latency_ms": 6.833520747022703,
-          "p95_latency_ms": 8.074416502495296,
+          "p50_latency_ms": 7.717270753346384,
+          "p95_latency_ms": 15.629229514161125,
           "recall_at_10": 0.6713975566916743
         },
         "passed": false,
@@ -66,11 +66,11 @@
       {
         "metrics": {
           "estimated_cost_usd_per_1k_queries": 0.0,
-          "index_time_ms": 14103.649541997584,
+          "index_time_ms": 10435.743248992367,
           "mrr_at_10": 0.9117647058823529,
           "ndcg_at_10": 0.7833233223026611,
-          "p50_latency_ms": 7.408635734464042,
-          "p95_latency_ms": 8.571020516683348,
+          "p50_latency_ms": 8.37455201690318,
+          "p95_latency_ms": 16.268125007627532,
           "recall_at_10": 0.7452792305733482
         },
         "passed": true,
@@ -82,7 +82,7 @@
   "run_2": {
     "active_policy": "hybrid",
     "compiler_reason": "Selected the highest passing nDCG@10, then Recall@10, lower p95 latency, lower estimated cost, and policy name.",
-    "configuration_hash": "a91535986fc5cf5126843e7a757b05e724969dde3cd85948b01df0e92c9d156c",
+    "configuration_hash": "d6dd8cecbec93e63e750a26b81b01b52d810905f461e50e75c630399d16ad9f4",
     "fixture_hash": "26b3509cbcba6b3cf67a82364ffc6370deec9bbad2b9ee899333bd88d767aab6",
     "fixture_id": "government-schemes-pilot-v2-seed42",
     "index_hashes": {
@@ -94,11 +94,11 @@
       {
         "metrics": {
           "estimated_cost_usd_per_1k_queries": 0.0,
-          "index_time_ms": 18.02966700051911,
+          "index_time_ms": 17.567167000379413,
           "mrr_at_10": 0.9411764705882353,
           "ndcg_at_10": 0.8291612772453213,
-          "p50_latency_ms": 0.5219687591306865,
-          "p95_latency_ms": 0.7199795072665438,
+          "p50_latency_ms": 0.4800102469744161,
+          "p95_latency_ms": 0.7952084997668862,
           "recall_at_10": 0.7813567151802446
         },
         "passed": false,
@@ -110,11 +110,11 @@
       {
         "metrics": {
           "estimated_cost_usd_per_1k_queries": 0.0,
-          "index_time_ms": 636.1712079960853,
+          "index_time_ms": 758.8025830045808,
           "mrr_at_10": 0.842483660130719,
           "ndcg_at_10": 0.6817438327904632,
-          "p50_latency_ms": 7.178427011240274,
-          "p95_latency_ms": 7.645333491382189,
+          "p50_latency_ms": 7.265604246640578,
+          "p95_latency_ms": 7.844978987122886,
           "recall_at_10": 0.6713975566916743
         },
         "passed": false,
@@ -127,11 +127,11 @@
       {
         "metrics": {
           "estimated_cost_usd_per_1k_queries": 0.0,
-          "index_time_ms": 654.2008749966044,
+          "index_time_ms": 776.3697500049602,
           "mrr_at_10": 0.9117647058823529,
           "ndcg_at_10": 0.7833233223026611,
-          "p50_latency_ms": 7.861771257012151,
-          "p95_latency_ms": 8.265458003734238,
+          "p50_latency_ms": 7.806010260537732,
+          "p95_latency_ms": 8.72016699577216,
           "recall_at_10": 0.7452792305733482
         },
         "passed": true,

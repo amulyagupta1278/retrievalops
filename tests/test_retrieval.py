@@ -11,7 +11,12 @@ from numpy.typing import NDArray
 from retrievalops.api import create_app
 from retrievalops.config import Settings
 from retrievalops.contracts import Chunk, JobState
-from retrievalops.retrieval import BM25Index, DenseIndex, reciprocal_rank_fusion
+from retrievalops.retrieval import (
+    BM25Index,
+    DenseIndex,
+    SentenceTransformerEmbedder,
+    reciprocal_rank_fusion,
+)
 
 
 class DeterministicEmbedder:
@@ -60,6 +65,12 @@ def test_bm25_dense_and_hybrid_rank_relevant_chunks() -> None:
     assert hybrid[0].chunk_id in {chunks[0].id, chunks[2].id}
 
 
+def test_production_embedder_pins_model_revision() -> None:
+    embedder = SentenceTransformerEmbedder()
+
+    assert embedder.model_revision == "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+
+
 def test_upload_process_status_and_protected_hybrid_query(tmp_path: Path) -> None:
     app = create_app(
         Settings(
@@ -103,6 +114,7 @@ def test_upload_process_status_and_protected_hybrid_query(tmp_path: Path) -> Non
         assert status_response.json()["state"] == "ready"
         assert len(manifest["configuration_sha256"]) == 64
         assert len(manifest["embedder_identity_sha256"]) == 64
+        assert manifest["embedder_revision"] == "unversioned-test-double"
         assert response.status_code == 200
         assert response.json()["policy"] == "bootstrap-hybrid"
         assert response.json()["results"][0]["text"].startswith("Canary deployment")

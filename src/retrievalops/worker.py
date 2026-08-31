@@ -82,11 +82,13 @@ class IngestionWorker:
             )
             dense_index_time_ms = (time.perf_counter() - dense_started) * 1_000
             files = [chunks_key, bm25_key, dense_key, dense_ids_key]
+            embedder_revision = getattr(self._embedder, "model_revision", "unversioned-test-double")
             index_configuration = {
                 "bm25": {"b": 0.75, "k1": 1.5},
                 "chunk_overlap_tokens": 64,
                 "chunk_tokens": 512,
                 "dense_metric": "cosine_via_normalized_inner_product",
+                "dense_model_revision": embedder_revision,
                 "hybrid": {"method": "rrf", "rank_constant": 60},
             }
             configuration_bytes = json.dumps(
@@ -96,8 +98,9 @@ class IngestionWorker:
                 "schema_version": 1,
                 "document_sha256": claimed.document.sha256,
                 "embedder": self._embedder.model_name,
+                "embedder_revision": embedder_revision,
                 "embedder_identity_sha256": hashlib.sha256(
-                    self._embedder.model_name.encode("utf-8")
+                    f"{self._embedder.model_name}@{embedder_revision}".encode()
                 ).hexdigest(),
                 "configuration": index_configuration,
                 "configuration_sha256": hashlib.sha256(configuration_bytes).hexdigest(),

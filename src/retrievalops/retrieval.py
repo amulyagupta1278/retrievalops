@@ -13,6 +13,7 @@ from numpy.typing import NDArray
 from retrievalops.contracts import Chunk
 
 _TERM = re.compile(r"\w+", re.UNICODE)
+_DEFAULT_MODEL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 
 
 class Embedder(Protocol):
@@ -23,19 +24,31 @@ class Embedder(Protocol):
 
 
 class SentenceTransformerEmbedder:
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
+    def __init__(
+        self,
+        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        model_revision: str = _DEFAULT_MODEL_REVISION,
+    ) -> None:
         self._model_name = model_name
+        self._model_revision = model_revision
         self._model: Any = None
 
     @property
     def model_name(self) -> str:
         return self._model_name
 
+    @property
+    def model_revision(self) -> str:
+        return self._model_revision
+
     def encode(self, texts: Sequence[str]) -> NDArray[np.float32]:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(self._model_name)
+            self._model = SentenceTransformer(
+                self._model_name,
+                revision=self._model_revision,
+            )
         encoded = self._model.encode(list(texts), normalize_embeddings=True, convert_to_numpy=True)
         return np.asarray(encoded, dtype=np.float32)
 
