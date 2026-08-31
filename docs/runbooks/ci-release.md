@@ -23,6 +23,11 @@ Configure a GitHub ruleset for `main` that:
 Until this ruleset and one green hosted run are independently visible, T16 is not considered
 fully proven even when every local check passes.
 
+The production deploy job is skipped until the repository variable `PUBLIC_HOSTNAME` is set. This
+allows a new repository to prove and publish its immutable image without targeting absent
+infrastructure. Adding the variable activates the protected production-environment path, whose
+runtime secret and kubeconfig checks continue to fail closed.
+
 ## Verification
 
 Verify an image before deployment:

@@ -27,6 +27,7 @@ def test_ci_gates_publish_on_main_and_uses_immutable_action_revisions() -> None:
     assert jobs["publish"]["needs"] == ["quality", "container"]
     assert "github.event_name == 'push'" in jobs["publish"]["if"]
     assert "github.ref == 'refs/heads/main'" in jobs["publish"]["if"]
+    assert "vars.PUBLIC_HOSTNAME != ''" in jobs["deploy"]["if"]
     assert "sha-${{ github.sha }}" in workflow_text
     assert "cosign sign --yes" in workflow_text
     assert "subject-digest: ${{ steps.build.outputs.digest }}" in workflow_text
