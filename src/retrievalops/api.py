@@ -3,15 +3,25 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from time import perf_counter
 from typing import Annotated
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from fastapi import FastAPI, File, Header, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 
 from retrievalops.config import Settings, get_settings
-from retrievalops.contracts import CreateSandboxResponse, Document, IngestionJob, JobState, Sandbox
+from retrievalops.contracts import (
+    CreateSandboxResponse,
+    Document,
+    EvaluationSuggestion,
+    IngestionJob,
+    JobState,
+    Judgment,
+    PolicyDecision,
+    Sandbox,
+)
 from retrievalops.errors import ServiceError, service_error_handler
+from retrievalops.evaluation import EvaluationService
 from retrievalops.lifecycle import SandboxLifecycle
 from retrievalops.metadata import MetadataStore, create_capability_token
 from retrievalops.querying import QueryService
@@ -55,6 +65,23 @@ class QueryResponse(BaseModel):
     results: list[QueryResult]
 
 
+class JudgmentInput(BaseModel):
+    query: Annotated[str, Field(min_length=1, max_length=1_000)]
+    relevant_chunk_id: Annotated[str, Field(min_length=1)]
+    relevance: Annotated[int, Field(ge=0, le=3)] = 3
+    reviewed: bool
+
+
+class JudgmentsRequest(BaseModel):
+    judgments: Annotated[list[JudgmentInput], Field(min_length=1, max_length=5)]
+
+
+class JudgmentsResponse(BaseModel):
+    stored: int
+    reviewed: int
+    optimization_unlocked: bool
+
+
 def health() -> HealthResponse:
     settings = get_settings()
     return HealthResponse(
@@ -73,6 +100,7 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
     runtime_embedder = embedder or SentenceTransformerEmbedder()
     ingestion_worker = IngestionWorker(metadata_store, artifact_store, runtime_embedder)
     query_service = QueryService(artifact_store, runtime_embedder)
+    evaluation_service = EvaluationService(artifact_store, query_service)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -190,9 +218,10 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
                 503, "RETRIEVAL_UNAVAILABLE", "The retrieval index is unavailable."
             ) from None
         elapsed_ms = (perf_counter() - started) * 1_000
+        active_policy, _ = query_service.active_policy(sandbox_id)
         return QueryResponse(
             trace_id=uuid4(),
-            policy="bootstrap-hybrid-rrf",
+            policy=active_policy,
             policy_version=policy_version,
             latency_ms=elapsed_ms,
             results=[
@@ -205,6 +234,101 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
                 for rank, hit in enumerate(hits, start=1)
             ],
         )
+
+    def require_ready_sandbox(sandbox_id: UUID, sandbox_token: str) -> None:
+        if not metadata_store.token_matches(sandbox_id, sandbox_token):
+            raise ServiceError(404, "SANDBOX_NOT_FOUND", "The sandbox was not found.")
+        if metadata_store.sandbox_state(sandbox_id) != JobState.ready:
+            raise ServiceError(409, "SANDBOX_NOT_READY", "Sandbox ingestion is not complete.")
+
+    @application.get(
+        "/v1/sandboxes/{sandbox_id}/evaluation-suggestions",
+        response_model=list[EvaluationSuggestion],
+        tags=["evaluation"],
+    )
+    def evaluation_suggestions(
+        sandbox_id: UUID,
+        sandbox_token: Annotated[str, Header(alias="X-Sandbox-Token", min_length=1)],
+    ) -> list[EvaluationSuggestion]:
+        require_ready_sandbox(sandbox_id, sandbox_token)
+        return evaluation_service.suggestions(sandbox_id)
+
+    @application.put(
+        "/v1/sandboxes/{sandbox_id}/judgments",
+        response_model=JudgmentsResponse,
+        tags=["evaluation"],
+    )
+    def replace_judgments(
+        sandbox_id: UUID,
+        request: JudgmentsRequest,
+        sandbox_token: Annotated[str, Header(alias="X-Sandbox-Token", min_length=1)],
+    ) -> JudgmentsResponse:
+        require_ready_sandbox(sandbox_id, sandbox_token)
+        valid_chunk_ids = {chunk.id for chunk in evaluation_service.chunks(sandbox_id)}
+        judgments: list[Judgment] = []
+        for ordinal, item in enumerate(request.judgments):
+            if item.relevant_chunk_id not in valid_chunk_ids:
+                raise ServiceError(
+                    422,
+                    "INVALID_RELEVANT_CHUNK",
+                    "A relevant passage does not belong to this sandbox.",
+                )
+            judgments.append(
+                Judgment(
+                    id=uuid5(sandbox_id, f"judgment:{ordinal}:{item.query}"),
+                    sandbox_id=sandbox_id,
+                    **item.model_dump(),
+                )
+            )
+        metadata_store.replace_judgments(sandbox_id, judgments)
+        reviewed = sum(judgment.reviewed and judgment.relevance > 0 for judgment in judgments)
+        return JudgmentsResponse(
+            stored=len(judgments),
+            reviewed=reviewed,
+            optimization_unlocked=reviewed >= 3,
+        )
+
+    @application.post(
+        "/v1/sandboxes/{sandbox_id}/optimize",
+        response_model=PolicyDecision,
+        tags=["evaluation"],
+    )
+    def optimize(
+        sandbox_id: UUID,
+        sandbox_token: Annotated[str, Header(alias="X-Sandbox-Token", min_length=1)],
+    ) -> PolicyDecision:
+        require_ready_sandbox(sandbox_id, sandbox_token)
+        judgments = [
+            judgment
+            for judgment in metadata_store.judgments(sandbox_id, reviewed_only=True)
+            if judgment.relevance > 0
+        ]
+        if len(judgments) < 3:
+            raise ServiceError(
+                409,
+                "INSUFFICIENT_REVIEWED_JUDGMENTS",
+                "Confirm at least three judgments before optimization.",
+            )
+        return evaluation_service.optimize(sandbox_id, judgments)
+
+    @application.get(
+        "/v1/sandboxes/{sandbox_id}/policy",
+        response_model=PolicyDecision,
+        tags=["evaluation"],
+    )
+    def get_policy(
+        sandbox_id: UUID,
+        sandbox_token: Annotated[str, Header(alias="X-Sandbox-Token", min_length=1)],
+    ) -> PolicyDecision:
+        require_ready_sandbox(sandbox_id, sandbox_token)
+        try:
+            return PolicyDecision.model_validate_json(
+                artifact_store.read(f"{sandbox_id}/active_policy.json")
+            )
+        except FileNotFoundError:
+            raise ServiceError(
+                404, "POLICY_NOT_OPTIMIZED", "No optimized policy exists for this sandbox."
+            ) from None
 
     return application
 

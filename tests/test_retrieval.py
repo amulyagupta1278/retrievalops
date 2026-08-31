@@ -104,7 +104,7 @@ def test_upload_process_status_and_protected_hybrid_query(tmp_path: Path) -> Non
         assert len(manifest["configuration_sha256"]) == 64
         assert len(manifest["embedder_identity_sha256"]) == 64
         assert response.status_code == 200
-        assert response.json()["policy"] == "bootstrap-hybrid-rrf"
+        assert response.json()["policy"] == "bootstrap-hybrid"
         assert response.json()["results"][0]["text"].startswith("Canary deployment")
 
         other = client.post(

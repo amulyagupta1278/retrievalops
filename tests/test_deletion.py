@@ -1,11 +1,13 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from retrievalops.api import create_app
 from retrievalops.config import Settings
+from retrievalops.contracts import Judgment
 
 
 def _app(tmp_path: Path) -> FastAPI:
@@ -31,6 +33,20 @@ def test_owner_can_delete_sandbox_and_content(tmp_path: Path) -> None:
 
     with TestClient(app) as client:
         upload = _upload(client)
+        sandbox_id = UUID(upload["sandbox_id"])
+        app.state.metadata_store.replace_judgments(
+            sandbox_id,
+            [
+                Judgment(
+                    id=uuid4(),
+                    sandbox_id=sandbox_id,
+                    query="What must deletion remove?",
+                    relevant_chunk_id=f"{sandbox_id}:fixture:000000",
+                    relevance=3,
+                    reviewed=True,
+                )
+            ],
+        )
         response = client.delete(
             f"/v1/sandboxes/{upload['sandbox_id']}",
             headers={"X-Sandbox-Token": upload["sandbox_token"]},
@@ -41,6 +57,7 @@ def test_owner_can_delete_sandbox_and_content(tmp_path: Path) -> None:
             upload["sandbox_id"], upload["sandbox_token"]
         )
         assert app.state.metadata_store.deletion_audit_count(upload["sandbox_id"]) == 1
+        assert app.state.metadata_store.judgments(sandbox_id) == []
         assert not (tmp_path / "artifacts" / upload["sandbox_id"]).exists()
 
 

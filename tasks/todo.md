@@ -51,25 +51,25 @@ Every task is a focused S/M increment. The full Definition of Done in `tasks/pla
 ## Day 3 — Evidence-driven optimization
 
 ### T07 — Collect reviewed workload evidence
-- [ ] Generate five deterministic passage-linked suggestions and accept confirmed/edited judgments.
+- [x] Generate five deterministic passage-linked suggestions and accept confirmed/edited judgments.
 - **Depends on:** T04, T06
 - **Acceptance:** optimization remains locked below three valid judgments; judgments cannot reference another sandbox.
 - **Verify:** suggestion determinism and judgment authorization tests.
 
 ### T08 — Benchmark retrieval candidates
-- [ ] Evaluate BM25, dense, and hybrid with Recall@10, nDCG@10, MRR@10, p50/p95 latency, index time, and cost estimate.
+- [x] Evaluate BM25, dense, and hybrid with Recall@10, nDCG@10, MRR@10, p50/p95 latency, index time, and cost estimate.
 - **Depends on:** T05, T07
 - **Acceptance:** candidates share one frozen judgment set and produce schema-valid, reproducible scorecards.
 - **Verify:** focused metric tests and two-run benchmark comparison.
 
 ### T09 — Compile and activate a policy
-- [ ] Apply hard gates and deterministic tie-breaking, emit an immutable bundle, activate champion, and retain bootstrap fallback.
+- [x] Apply hard gates and deterministic tie-breaking, emit an immutable bundle, activate champion, and retain bootstrap fallback.
 - **Depends on:** T08
 - **Acceptance:** failures include reasons; identical inputs create identical manifests; champion queries expose lineage.
 - **Verify:** compiler unit tests and upload-to-selected-policy integration test.
 
 ### Checkpoint C
-- [ ] Upload → ingest → query → review → benchmark → select → query champion works end to end.
+- [x] Upload → ingest → query → review → benchmark → select → query champion works end to end.
 
 ## Day 4 — Controlled evidence and lineage
 

@@ -40,10 +40,13 @@ class IngestionWorker:
             chunks_key = self._artifacts.write_json(
                 claimed.job.sandbox_id, "chunks.json", chunks_payload
             )
+            index_started = time.perf_counter()
             bm25 = BM25Index.build(extracted.chunks)
             bm25_key = self._artifacts.write_bytes(
                 claimed.job.sandbox_id, "bm25.json", bm25.to_bytes()
             )
+            bm25_index_time_ms = (time.perf_counter() - index_started) * 1_000
+            dense_started = time.perf_counter()
             dense = DenseIndex.build(extracted.chunks, self._embedder)
             dense_content = faiss.serialize_index(dense.index).tobytes()
             dense_key = self._artifacts.write_bytes(
@@ -52,6 +55,7 @@ class IngestionWorker:
             dense_ids_key = self._artifacts.write_json(
                 claimed.job.sandbox_id, "dense_ids.json", dense.chunk_ids
             )
+            dense_index_time_ms = (time.perf_counter() - dense_started) * 1_000
             files = [chunks_key, bm25_key, dense_key, dense_ids_key]
             index_configuration = {
                 "bm25": {"b": 0.75, "k1": 1.5},
@@ -73,6 +77,11 @@ class IngestionWorker:
                 "configuration": index_configuration,
                 "configuration_sha256": hashlib.sha256(configuration_bytes).hexdigest(),
                 "chunk_count": len(extracted.chunks),
+                "index_time_ms": {
+                    "bm25": bm25_index_time_ms,
+                    "dense": dense_index_time_ms,
+                    "hybrid": bm25_index_time_ms + dense_index_time_ms,
+                },
                 "files": {
                     key.rsplit("/", 1)[1]: hashlib.sha256(self._artifacts.read(key)).hexdigest()
                     for key in files

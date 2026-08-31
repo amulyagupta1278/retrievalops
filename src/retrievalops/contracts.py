@@ -116,3 +116,38 @@ class PolicyMetadata(BaseModel):
     config_hash: Sha256
     index_hashes: Annotated[dict[str, Sha256], Field(min_length=1)]
     commit_sha: Annotated[str, Field(min_length=1)]
+
+
+class EvaluationSuggestion(BaseModel):
+    id: UUID
+    query: Annotated[str, Field(min_length=1, max_length=1_000)]
+    relevant_chunk_id: Annotated[str, Field(min_length=1)]
+    passage: Annotated[str, Field(min_length=1)]
+
+
+class CandidateMetrics(BaseModel):
+    recall_at_10: Annotated[float, Field(ge=0, le=1)]
+    ndcg_at_10: Annotated[float, Field(ge=0, le=1)]
+    mrr_at_10: Annotated[float, Field(ge=0, le=1)]
+    p50_latency_ms: Annotated[float, Field(ge=0)]
+    p95_latency_ms: Annotated[float, Field(ge=0)]
+    index_time_ms: Annotated[float, Field(ge=0)]
+    estimated_cost_usd_per_1k_queries: Annotated[float, Field(ge=0)]
+
+
+class CandidateScorecard(BaseModel):
+    policy: Literal["bm25", "dense", "hybrid"]
+    metrics: CandidateMetrics
+    passed: bool
+    rejection_reasons: list[str]
+
+
+class PolicyDecision(BaseModel):
+    active_policy: Literal["bootstrap-hybrid", "bm25", "dense", "hybrid"]
+    policy_version: Annotated[str, Field(min_length=1)]
+    evidence_hash: Sha256
+    corpus_hash: Sha256
+    configuration_hash: Sha256
+    index_hashes: Annotated[dict[str, Sha256], Field(min_length=1)]
+    scorecards: Annotated[list[CandidateScorecard], Field(min_length=3, max_length=3)]
+    compiler_reason: Annotated[str, Field(min_length=1)]

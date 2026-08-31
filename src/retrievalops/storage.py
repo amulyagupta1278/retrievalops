@@ -47,6 +47,25 @@ class ArtifactStore:
         content = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return self.write_bytes(sandbox_id, name, content)
 
+    def write_immutable_json(self, sandbox_id: UUID, name: str, value: object) -> str:
+        if Path(name).name != name:
+            raise ValueError("artifact name must not contain path components")
+        content = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        destination = self.root / str(sandbox_id) / name
+        try:
+            descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            if destination.read_bytes() != content:
+                raise RuntimeError(
+                    "immutable artifact already exists with different content"
+                ) from None
+        else:
+            with os.fdopen(descriptor, "wb") as artifact:
+                artifact.write(content)
+                artifact.flush()
+                os.fsync(artifact.fileno())
+        return f"{sandbox_id}/{name}"
+
     def sandbox_path(self, sandbox_id: UUID, name: str) -> Path:
         return self._resolve(f"{sandbox_id}/{name}")
 

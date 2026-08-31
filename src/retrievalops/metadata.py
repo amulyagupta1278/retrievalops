@@ -9,7 +9,14 @@ from uuid import UUID
 from sqlalchemy import DateTime, ForeignKey, Integer, String, create_engine, delete, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-from retrievalops.contracts import Document, IngestionJob, JobState, Sandbox, SupportedMediaType
+from retrievalops.contracts import (
+    Document,
+    IngestionJob,
+    JobState,
+    Judgment,
+    Sandbox,
+    SupportedMediaType,
+)
 
 
 class Base(DeclarativeBase):
@@ -44,6 +51,17 @@ class JobRecord(Base):
     sandbox_id: Mapped[str] = mapped_column(ForeignKey("sandboxes.id"), nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(64))
+
+
+class JudgmentRecord(Base):
+    __tablename__ = "judgments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    sandbox_id: Mapped[str] = mapped_column(ForeignKey("sandboxes.id"), nullable=False)
+    query: Mapped[str] = mapped_column(String(1000), nullable=False)
+    relevant_chunk_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    relevance: Mapped[int] = mapped_column(Integer, nullable=False)
+    reviewed: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class DeletionAuditRecord(Base):
@@ -229,6 +247,7 @@ class MetadataStore:
             if sandbox is None:
                 return False
             session.execute(delete(JobRecord).where(JobRecord.sandbox_id == identifier))
+            session.execute(delete(JudgmentRecord).where(JudgmentRecord.sandbox_id == identifier))
             session.execute(delete(DocumentRecord).where(DocumentRecord.sandbox_id == identifier))
             session.delete(sandbox)
             if session.get(DeletionAuditRecord, identifier) is None:
@@ -249,3 +268,42 @@ class MetadataStore:
                 .where(DeletionAuditRecord.sandbox_id == str(sandbox_id))
             )
             return int(count or 0)
+
+    def replace_judgments(self, sandbox_id: UUID, judgments: list[Judgment]) -> None:
+        with Session(self._engine) as session, session.begin():
+            session.execute(
+                delete(JudgmentRecord).where(JudgmentRecord.sandbox_id == str(sandbox_id))
+            )
+            session.add_all(
+                JudgmentRecord(
+                    id=str(judgment.id),
+                    sandbox_id=str(sandbox_id),
+                    query=judgment.query,
+                    relevant_chunk_id=judgment.relevant_chunk_id,
+                    relevance=judgment.relevance,
+                    reviewed=int(judgment.reviewed),
+                )
+                for judgment in judgments
+            )
+
+    def judgments(self, sandbox_id: UUID, *, reviewed_only: bool = False) -> list[Judgment]:
+        with Session(self._engine) as session:
+            statement = (
+                select(JudgmentRecord)
+                .where(JudgmentRecord.sandbox_id == str(sandbox_id))
+                .order_by(JudgmentRecord.id)
+            )
+            if reviewed_only:
+                statement = statement.where(JudgmentRecord.reviewed == 1)
+            records = session.scalars(statement).all()
+            return [
+                Judgment(
+                    id=UUID(record.id),
+                    sandbox_id=UUID(record.sandbox_id),
+                    query=record.query,
+                    relevant_chunk_id=record.relevant_chunk_id,
+                    relevance=record.relevance,
+                    reviewed=bool(record.reviewed),
+                )
+                for record in records
+            ]
