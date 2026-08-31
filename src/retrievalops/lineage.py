@@ -149,6 +149,14 @@ class LineageRegistry:
             raise ValueError("registered version tags do not match the source artifact")
         return lineage
 
+    def promote_ephemeral_candidate(self, subject_id: str) -> None:
+        subject = _SAFE_IDENTIFIER.sub("-", subject_id).strip("-.")
+        if not subject:
+            raise ValueError("subject identifier has no registry-safe characters")
+        model_name = f"retrievalops.ephemeral.{subject}"
+        candidate = self._client.get_model_version_by_alias(model_name, "candidate")
+        self._client.set_registered_model_alias(model_name, "champion", candidate.version)
+
     def _log_lineage(self, run_id: str, lineage: LineageRecord) -> None:
         payload = lineage.model_dump(mode="json")
         self._client.log_dict(run_id, payload, "policy_bundle/lineage.json")

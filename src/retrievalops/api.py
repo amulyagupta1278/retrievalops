@@ -29,6 +29,7 @@ from retrievalops.lifecycle import SandboxLifecycle
 from retrievalops.lineage import LineageRegistry, ephemeral_lineage
 from retrievalops.metadata import MetadataStore, create_capability_token
 from retrievalops.querying import QueryService
+from retrievalops.release import PolicyReleaseController
 from retrievalops.retrieval import Embedder, SentenceTransformerEmbedder
 from retrievalops.storage import ArtifactStore
 from retrievalops.telemetry import Telemetry
@@ -149,10 +150,19 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
     def register_candidate(sandbox_id: UUID, decision: PolicyDecision) -> None:
         register_ephemeral(sandbox_id, decision, alias="candidate")
 
+    def promote_candidate(sandbox_id: UUID) -> None:
+        if lineage_registry is not None:
+            lineage_registry.promote_ephemeral_candidate(str(sandbox_id))
+
     evaluation_service = EvaluationService(
         artifact_store,
         query_service,
         registrar=register_champion if lineage_registry is not None else None,
+    )
+    policy_release_controller = PolicyReleaseController(
+        artifact_store,
+        telemetry,
+        promoter=promote_candidate if lineage_registry is not None else None,
     )
     feedback_governance = FeedbackGovernance(metadata_store)
     retraining_workflow = RetrainingWorkflow(
@@ -163,6 +173,7 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         minimum_approved_feedback=runtime_settings.drift_min_approved_feedback,
         query_drift_threshold=runtime_settings.query_drift_threshold,
         registrar=register_candidate if lineage_registry is not None else None,
+        releaser=policy_release_controller.start,
     )
     feedback_governance.bind_retraining(retraining_workflow.run)
 
@@ -177,6 +188,7 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         application.state.lineage_registry = lineage_registry
         application.state.feedback_governance = feedback_governance
         application.state.retraining_workflow = retraining_workflow
+        application.state.policy_release_controller = policy_release_controller
         try:
             yield
         finally:
@@ -294,21 +306,28 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         if metadata_store.sandbox_state(sandbox_id) != JobState.ready:
             raise ServiceError(409, "SANDBOX_NOT_READY", "Sandbox ingestion is not complete.")
         started = perf_counter()
+        trace_id = UUID(hex=http_request.state.trace_id)
         active_policy, _ = query_service.active_policy(sandbox_id)
         try:
-            hits, policy_version = query_service.search(sandbox_id, request.query, request.top_k)
+            hits, served_policy, policy_version = policy_release_controller.search(
+                query_service,
+                sandbox_id,
+                trace_id,
+                request.query,
+                request.top_k,
+            )
         except (OSError, ValueError, RuntimeError):
             telemetry.record_retrieval(active_policy, "unavailable")
             raise ServiceError(
                 503, "RETRIEVAL_UNAVAILABLE", "The retrieval index is unavailable."
             ) from None
         elapsed_ms = (perf_counter() - started) * 1_000
-        telemetry.record_retrieval(active_policy, "success")
-        if active_policy == "bootstrap-hybrid":
+        telemetry.record_retrieval(served_policy, "success")
+        if served_policy == "bootstrap-hybrid":
             telemetry.record_fallback("bootstrap_policy")
         return QueryResponse(
-            trace_id=UUID(hex=http_request.state.trace_id),
-            policy=active_policy,
+            trace_id=trace_id,
+            policy=served_policy,
             policy_version=policy_version,
             latency_ms=elapsed_ms,
             results=[

@@ -7,6 +7,7 @@ from typing import Final
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
+from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -113,15 +114,24 @@ class Telemetry:
     def record_fallback(self, reason: str) -> None:
         _require_bounded("reason", reason, _FALLBACK_REASONS)
         self.fallbacks.labels(reason).inc()
+        _log_event("retrieval_fallback", reason=reason, trace_id=_current_trace_id())
 
     def record_drift(self, outcome: str) -> None:
         _require_bounded("outcome", outcome, _DRIFT_OUTCOMES)
         self.drift_events.labels(outcome).inc()
+        if outcome != "stable":
+            _log_event("drift_evaluated", outcome=outcome, trace_id=_current_trace_id())
 
     def record_release(self, kind: str, outcome: str) -> None:
         _require_bounded("kind", kind, _RELEASE_KINDS)
         _require_bounded("outcome", outcome, _RELEASE_OUTCOMES)
         self.release_events.labels(kind, outcome).inc()
+        _log_event(
+            "release_transitioned",
+            kind=kind,
+            outcome=outcome,
+            trace_id=_current_trace_id(),
+        )
 
     def install(self, application: FastAPI) -> None:
         application.state.telemetry = self
@@ -197,3 +207,8 @@ def _require_bounded(name: str, value: str, allowed: frozenset[str]) -> None:
 
 def _log_event(event: str, **fields: str | float) -> None:
     _LOGGER.info(json.dumps({"event": event, **fields}, sort_keys=True))
+
+
+def _current_trace_id() -> str:
+    trace_id = trace.get_current_span().get_span_context().trace_id
+    return f"{trace_id:032x}" if trace_id else "untraced"

@@ -29,6 +29,10 @@ class CandidateRegistrar(Protocol):
     def __call__(self, sandbox_id: UUID, decision: PolicyDecision) -> None: ...
 
 
+class CandidateReleaser(Protocol):
+    def __call__(self, sandbox_id: UUID) -> object: ...
+
+
 class FeedbackGovernance:
     def __init__(self, metadata: MetadataStore) -> None:
         self._metadata = metadata
@@ -109,6 +113,7 @@ class RetrainingWorkflow:
         minimum_approved_feedback: int,
         query_drift_threshold: float,
         registrar: CandidateRegistrar | None = None,
+        releaser: CandidateReleaser | None = None,
     ) -> None:
         self._metadata = metadata
         self._artifacts = artifacts
@@ -117,6 +122,7 @@ class RetrainingWorkflow:
         self._minimum = minimum_approved_feedback
         self._threshold = query_drift_threshold
         self._registrar = registrar
+        self._releaser = releaser
 
     def run(self, sandbox_id: str | UUID) -> RetrainingRun:
         identifier = UUID(str(sandbox_id))
@@ -183,6 +189,8 @@ class RetrainingWorkflow:
                 "candidate_policy.json",
                 decision.model_dump(mode="json"),
             )
+            if self._releaser is not None:
+                self._releaser(identifier)
         except Exception:
             self._telemetry.record_drift("workflow_failed")
             return self._metadata.finish_retraining_run(

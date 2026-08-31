@@ -114,7 +114,7 @@ Every task is a focused S/M increment. The full Definition of Done in `tasks/pla
 ## Day 6 — Independent release paths
 
 ### T15 — Release retrieval policies safely
-- [ ] Load candidate/champion concurrently, route deterministic 10/50/100 trace allocation, apply operational gates, and promote or reset candidate traffic.
+- [x] Load candidate/champion concurrently, route deterministic 10/50/100 trace allocation, apply operational gates, and promote or reset candidate traffic.
 - **Depends on:** T12–T14
 - **Acceptance:** good candidate becomes champion; bad candidate returns to zero traffic without application restart.
 - **Verify:** replay promotion and rollback scenarios.

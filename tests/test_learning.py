@@ -11,6 +11,7 @@ from numpy.typing import NDArray
 
 from retrievalops.api import create_app
 from retrievalops.config import Settings
+from retrievalops.contracts import CanaryObservation
 
 COMMIT_SHA = "4a200cf1b198b7e3ff6f28d1d5f78f16ef2951c5"
 LOCK_HASH = "097f287cd5707d3033c8f2beda0887b71a98b32be4744f45b774a013c1eadf81"
@@ -133,6 +134,7 @@ def test_approved_drift_starts_exactly_one_candidate_without_changing_champion(
             reason="Human review confirmed passage relevance.",
         )
         assert app.state.metadata_store.retraining_run_count(uploaded["sandbox_id"]) == 1
+        release = app.state.policy_release_controller.state(uploaded["sandbox_id"])
         first = app.state.retraining_workflow.run(uploaded["sandbox_id"])
         second = app.state.retraining_workflow.run(uploaded["sandbox_id"])
         metrics = client.get("/metrics").text
@@ -140,6 +142,8 @@ def test_approved_drift_starts_exactly_one_candidate_without_changing_champion(
     assert approval.approved == 3
     assert approval.audit_id
     assert first.status == "candidate_ready"
+    assert release.status == "canary"
+    assert release.allocation_percent == 10
     assert first.retraining_id == second.retraining_id
     assert first.idempotency_key == second.idempotency_key
     assert first.policy_version == second.policy_version
@@ -355,12 +359,24 @@ def test_automatic_candidate_registration_keeps_mlflow_champion_alias(
             approved_by="demo-reviewer",
             reason="MLflow candidate isolation proof.",
         )
+        registry_client = MlflowClient(tracking_uri=tracking_uri, registry_uri=tracking_uri)
+        model_name = f"retrievalops.ephemeral.{sandbox_id}"
+        champion = registry_client.get_model_version_by_alias(model_name, "champion")
+        candidate = registry_client.get_model_version_by_alias(model_name, "candidate")
+        assert champion.version != candidate.version
+        healthy = CanaryObservation(
+            request_count=100,
+            availability=1,
+            error_rate=0,
+            p95_latency_ms=20,
+            fallback_rate=0,
+            load_failures=0,
+        )
+        for _ in range(3):
+            app.state.policy_release_controller.observe(sandbox_id, healthy)
 
-    client = MlflowClient(tracking_uri=tracking_uri, registry_uri=tracking_uri)
-    model_name = f"retrievalops.ephemeral.{sandbox_id}"
-    champion = client.get_model_version_by_alias(model_name, "champion")
-    candidate = client.get_model_version_by_alias(model_name, "candidate")
-    assert champion.version != candidate.version
+    promoted = registry_client.get_model_version_by_alias(model_name, "champion")
+    assert promoted.version == candidate.version
     persisted = (tmp_path / "mlflow.db").read_bytes()
     for artifact in (tmp_path / "mlflow-artifacts").rglob("*"):
         if artifact.is_file():

@@ -30,6 +30,13 @@ class RetrainingStatus(StrEnum):
     failed = "failed"
 
 
+class PolicyReleaseStatus(StrEnum):
+    rejected = "rejected"
+    canary = "canary"
+    promoted = "promoted"
+    aborted = "aborted"
+
+
 _ALLOWED_JOB_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
     JobState.queued: frozenset({JobState.validating, JobState.failed}),
     JobState.validating: frozenset({JobState.extracting, JobState.failed}),
@@ -147,6 +154,24 @@ class RetrainingRun(BaseModel):
     drift_reasons: list[str] = Field(default_factory=list)
     policy_version: str | None = None
     error_code: str | None = None
+
+
+class CanaryObservation(BaseModel):
+    request_count: Annotated[int, Field(ge=0)]
+    availability: Annotated[float, Field(ge=0, le=1)]
+    error_rate: Annotated[float, Field(ge=0, le=1)]
+    p95_latency_ms: Annotated[float, Field(ge=0)]
+    fallback_rate: Annotated[float, Field(ge=0, le=1)]
+    load_failures: Annotated[int, Field(ge=0)]
+
+
+class PolicyReleaseState(BaseModel):
+    sandbox_id: UUID
+    champion_version: Annotated[str, Field(min_length=1)]
+    candidate_version: Annotated[str, Field(min_length=1)]
+    allocation_percent: Literal[0, 10, 50, 100]
+    status: PolicyReleaseStatus
+    abort_reason: str | None = None
 
 
 class RetrievalTrace(BaseModel):
