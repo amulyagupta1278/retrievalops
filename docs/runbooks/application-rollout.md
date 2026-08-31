@@ -23,6 +23,15 @@ retrieval-policy champion promotion remain independent.
 - GitHub production-environment protection and a narrowly scoped kubeconfig.
 - DNS and TLS configured as described by the public-deployment runbook.
 
+Install the pinned Argo Rollouts manifest with server-side apply. The v1.10.0 `Rollout` and
+`AnalysisRun` CRDs exceed Kubernetes' client-side-apply annotation limit on a clean cluster:
+
+```sh
+kubectl create namespace argo-rollouts
+kubectl apply --server-side -n argo-rollouts \
+  -f https://github.com/argoproj/argo-rollouts/releases/download/v1.10.0/install.yaml
+```
+
 ## Evidence for a release
 
 Retain the GitHub run URL, image digest, signature and attestation verification, Rollout status,
@@ -33,6 +42,10 @@ and after both scenarios; the values must be identical.
 
 The zero digest checked into the manifests is a fail-closed placeholder. The deployment workflow
 must replace it with the digest emitted by the publish job; it rejects malformed digests.
+
+The local K3s proof record is retained in `evidence/rollouts/local-k3s-smoke.json`. Its Prometheus
+API double only accelerates deterministic good/bad analysis in an ephemeral cluster; production
+continues to use the real three-sample Prometheus gates declared in `deploy/k8s/analysis.yaml`.
 
 ## Implementation sources
 

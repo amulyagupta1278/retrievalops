@@ -126,7 +126,7 @@ Every task is a focused S/M increment. The full Definition of Done in `tasks/pla
 - **Verify:** local container smoke, workflow validation, and green CI run.
 
 ### T17 — Roll out application images safely
-- [ ] Add K3s/Argo Rollouts readiness, resource limits, Prometheus analysis, promotion, and abort rollback while preserving policy aliases.
+- [x] Add K3s/Argo Rollouts readiness, resource limits, Prometheus analysis, promotion, and abort rollback while preserving policy aliases.
 - **Depends on:** T16
 - **Acceptance:** at least one replica stays ready; good image promotes; bad image aborts; champion never changes.
 - **Verify:** good-image and bad-image release smoke scenarios.

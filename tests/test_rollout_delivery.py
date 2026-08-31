@@ -1,3 +1,4 @@
+import runpy
 from pathlib import Path
 
 import yaml
@@ -40,6 +41,19 @@ def test_application_rollout_preserves_capacity_and_uses_automatic_gates() -> No
     assert container["resources"]["requests"]
     assert container["resources"]["limits"]
     assert container["securityContext"]["readOnlyRootFilesystem"] is True
+
+
+def test_local_prometheus_double_exercises_good_and_bad_gate_values() -> None:
+    module = runpy.run_path("scripts/fake_prometheus.py")
+    result = module["_result"]
+
+    assert result("sum(increase(metric[2m]))", "good") == 100.0
+    assert result('metric{status_class!="5xx"}', "good") == 1.0
+    assert result('metric{status_class="5xx"}', "good") == 0.0
+    assert result("histogram_quantile(0.95, metric)", "good") == 0.1
+    assert result('metric{status_class!="5xx"}', "bad") == 0.8
+    assert result('metric{status_class="5xx"}', "bad") == 0.2
+    assert result("histogram_quantile(0.95, metric)", "bad") == 0.9
 
 
 def test_analysis_enforces_volume_availability_error_and_latency_gates() -> None:

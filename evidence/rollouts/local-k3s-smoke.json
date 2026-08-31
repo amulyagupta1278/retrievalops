@@ -1,0 +1,31 @@
+{
+  "executed_at": "2026-09-01T01:28:00+05:30",
+  "commit": "5a2b5d9a1479dcb34d478d1a13392ae61d776307",
+  "environment": {
+    "kind": "ephemeral-local-k3s",
+    "k3s": "v1.33.3+k3s1",
+    "argo_rollouts": "v1.10.0",
+    "api_replicas": 2
+  },
+  "good_release": {
+    "result": "Healthy",
+    "analysis_runs": 3,
+    "analysis_result": "Successful",
+    "minimum_ready_replicas_observed": 2,
+    "stable_replicaset_changed": true
+  },
+  "bad_release": {
+    "result": "Degraded",
+    "aborted": true,
+    "failed_analysis_runs": 1,
+    "stable_weight": 100,
+    "canary_weight": 0,
+    "minimum_ready_replicas_observed": 2,
+    "stable_replicaset_unchanged": true
+  },
+  "policy_independence": {
+    "persistent_database_sha256_before": "6a8f1e5a6ff35ec0926595d1966f9a61af45825b107408b01212489019c1be6e",
+    "persistent_database_sha256_after": "6a8f1e5a6ff35ec0926595d1966f9a61af45825b107408b01212489019c1be6e"
+  },
+  "scope": "Local application-rollout proof only; not evidence of public HTTPS or hosted CI."
+}
