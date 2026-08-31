@@ -1,0 +1,26 @@
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: retrievalops-weighted
+spec:
+  weighted:
+    services:
+      - name: retrievalops-stable
+        port: 80
+      - name: retrievalops-canary
+        port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: retrievalops
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`retrievalops.example.com`)
+      services:
+        - kind: TraefikService
+          name: retrievalops-weighted
+  tls: {}

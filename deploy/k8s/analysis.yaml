@@ -1,0 +1,59 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: retrievalops-health
+spec:
+  args:
+    - name: latest-hash
+    - name: prometheus-address
+      value: http://prometheus.monitoring.svc.cluster.local:9090
+  metrics:
+    - name: request-volume
+      interval: 30s
+      count: 3
+      successCondition: result[0] >= 100
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: "{{args.prometheus-address}}"
+          query: |
+            sum(increase(retrievalops_http_requests_total{pod=~".*{{args.latest-hash}}.*"}[2m]))
+    - name: availability
+      interval: 30s
+      count: 3
+      successCondition: result[0] >= 0.99
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: "{{args.prometheus-address}}"
+          query: |
+            sum(increase(retrievalops_http_requests_total{pod=~".*{{args.latest-hash}}.*",status_class!="5xx"}[2m]))
+            /
+            clamp_min(sum(increase(retrievalops_http_requests_total{pod=~".*{{args.latest-hash}}.*"}[2m])), 1)
+    - name: error-rate
+      interval: 30s
+      count: 3
+      successCondition: result[0] <= 0.01
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: "{{args.prometheus-address}}"
+          query: |
+            sum(increase(retrievalops_http_requests_total{pod=~".*{{args.latest-hash}}.*",status_class="5xx"}[2m]))
+            /
+            clamp_min(sum(increase(retrievalops_http_requests_total{pod=~".*{{args.latest-hash}}.*"}[2m])), 1)
+    - name: p95-latency
+      interval: 30s
+      count: 3
+      successCondition: result[0] <= 0.5
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: "{{args.prometheus-address}}"
+          query: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(retrievalops_http_request_duration_seconds_bucket{pod=~".*{{args.latest-hash}}.*"}[2m])
+              )
+            )

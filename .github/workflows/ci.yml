@@ -120,3 +120,58 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE: ghcr.io/${{ github.repository }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
+        with:
+          version: v1.33.3
+      - name: Install pinned Argo Rollouts CLI
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/argoproj/argo-rollouts/releases/download/v1.10.0/kubectl-argo-rollouts-linux-amd64 \
+            --output "${RUNNER_TEMP}/kubectl-argo-rollouts"
+          echo "57a464e80c3e716076c9760e1d15ff06b853e3bcab3e22e30f4dba8a3e9f29b2  ${RUNNER_TEMP}/kubectl-argo-rollouts" | sha256sum --check
+          chmod 0755 "${RUNNER_TEMP}/kubectl-argo-rollouts"
+      - name: Configure production cluster
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+        run: |
+          test -n "${KUBE_CONFIG_DATA}"
+          echo "${KUBE_CONFIG_DATA}" | base64 --decode > "${RUNNER_TEMP}/kubeconfig"
+          chmod 0600 "${RUNNER_TEMP}/kubeconfig"
+      - name: Apply immutable release and await automated analysis
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository }}
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+          PUBLIC_HOSTNAME: ${{ vars.PUBLIC_HOSTNAME }}
+        run: |
+          echo "${DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          echo "${PUBLIC_HOSTNAME}" | grep -Eq '^[a-z0-9][a-z0-9.-]+[a-z0-9]$'
+          kubectl apply -f deploy/k8s/namespace.yaml
+          kubectl -n retrievalops get secret retrievalops-runtime
+          kubectl kustomize deploy/k8s \
+            | sed "s#ghcr.io/amulyagupta1278/retrievalops@sha256:0\{64\}#${IMAGE}@${DIGEST}#; s#retrievalops.example.com#${PUBLIC_HOSTNAME}#" \
+            | kubectl apply -f -
+          "${RUNNER_TEMP}/kubectl-argo-rollouts" status retrievalops -n retrievalops --timeout 15m
+      - name: Update worker only after API promotion
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository }}
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: |
+          sed "s#ghcr.io/amulyagupta1278/retrievalops@sha256:0\{64\}#${IMAGE}@${DIGEST}#" deploy/k8s/worker.yaml \
+            | kubectl apply -f -
+          if ! kubectl -n retrievalops rollout status deployment/retrievalops-worker --timeout=10m; then
+            kubectl -n retrievalops rollout undo deployment/retrievalops-worker
+            kubectl -n retrievalops rollout status deployment/retrievalops-worker --timeout=5m
+            exit 1
+          fi

@@ -1,0 +1,128 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: retrievalops
+  labels:
+    app.kubernetes.io/name: retrievalops-api
+    app.kubernetes.io/part-of: retrievalops
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  rollbackWindow:
+    revisions: 3
+  minReadySeconds: 10
+  progressDeadlineSeconds: 900
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: retrievalops-api
+  strategy:
+    canary:
+      stableService: retrievalops-stable
+      canaryService: retrievalops-canary
+      maxUnavailable: 0
+      maxSurge: 1
+      scaleDownDelaySeconds: 30
+      trafficRouting:
+        traefik:
+          weightedTraefikServiceName: retrievalops-weighted
+      steps:
+        - setWeight: 10
+        - pause: {duration: 2m}
+        - analysis:
+            templates:
+              - templateName: retrievalops-health
+            args:
+              - name: latest-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+        - setWeight: 50
+        - pause: {duration: 2m}
+        - analysis:
+            templates:
+              - templateName: retrievalops-health
+            args:
+              - name: latest-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+        - setWeight: 100
+        - analysis:
+            templates:
+              - templateName: retrievalops-health
+            args:
+              - name: latest-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: retrievalops-api
+        app.kubernetes.io/part-of: retrievalops
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8000"
+        prometheus.io/scrape: "true"
+    spec:
+      serviceAccountName: retrievalops
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/amulyagupta1278/retrievalops@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: retrievalops
+            - secretRef:
+                name: retrievalops-runtime
+          ports:
+            - name: http
+              containerPort: 8000
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1536Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: retrievalops-data
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi

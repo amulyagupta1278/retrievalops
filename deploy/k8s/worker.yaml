@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retrievalops-worker
+  namespace: retrievalops
+  labels:
+    app.kubernetes.io/name: retrievalops-worker
+    app.kubernetes.io/part-of: retrievalops
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: retrievalops-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: retrievalops-worker
+        app.kubernetes.io/part-of: retrievalops
+    spec:
+      serviceAccountName: retrievalops
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/amulyagupta1278/retrievalops@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          command: [retrievalops-worker]
+          envFrom:
+            - configMapRef:
+                name: retrievalops
+            - secretRef:
+                name: retrievalops-runtime
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1536Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+          startupProbe:
+            exec:
+              command: [python, -c, "import retrievalops"]
+            periodSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: retrievalops-data
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
