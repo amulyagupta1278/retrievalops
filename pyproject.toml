@@ -20,6 +20,7 @@ retrievalops-api = "retrievalops.cli:main"
 retrievalops-api-smoke = "retrievalops.smoke:main"
 retrievalops-worker = "retrievalops.worker:main"
 retrievalops-validate-fixtures = "retrievalops.fixture_cli:main"
+retrievalops-benchmark-fixtures = "retrievalops.controlled_cli:main"
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]

@@ -4,23 +4,21 @@ import math
 import re
 from statistics import median
 from time import perf_counter
-from typing import Literal
 from uuid import UUID, uuid5
 
+from retrievalops.benchmark import evaluate_rankings
 from retrievalops.contracts import (
     CandidateMetrics,
-    CandidateScorecard,
     Chunk,
     EvaluationSuggestion,
     Judgment,
     PolicyDecision,
 )
+from retrievalops.policy_compiler import POLICIES, PolicyName, compile_candidates
 from retrievalops.querying import QueryService
 from retrievalops.storage import ArtifactStore
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9-]{3,}")
-PolicyName = Literal["bm25", "dense", "hybrid"]
-_POLICIES: tuple[PolicyName, ...] = ("bm25", "dense", "hybrid")
 _QUESTION_TEMPLATES = (
     "What does the document say about {topic}?",
     "How does the document describe {topic}?",
@@ -86,49 +84,13 @@ class EvaluationService:
             policy: self._benchmark(
                 sandbox_id, policy, judgments, manifest["index_time_ms"][policy]
             )
-            for policy in _POLICIES
+            for policy in POLICIES
         }
         raw_metrics = {policy: result[0] for policy, result in benchmark_results.items()}
         missed_must_pass = {policy: result[1] for policy, result in benchmark_results.items()}
-        baseline = raw_metrics["hybrid"]
-        scorecards: list[CandidateScorecard] = []
-        for policy in _POLICIES:
-            metrics = raw_metrics[policy]
-            reasons: list[str] = []
-            if metrics.recall_at_10 < baseline.recall_at_10 - 0.02:
-                reasons.append("Recall@10 regressed by more than 0.02 versus bootstrap hybrid")
-            if metrics.ndcg_at_10 < baseline.ndcg_at_10 - 0.02:
-                reasons.append("nDCG@10 regressed by more than 0.02 versus bootstrap hybrid")
-            new_must_pass_misses = missed_must_pass[policy] - missed_must_pass["hybrid"]
-            if new_must_pass_misses:
-                reasons.append("One or more must-pass judgments regressed versus bootstrap hybrid")
-            if metrics.p95_latency_ms > 500:
-                reasons.append("p95 retrieval latency exceeds 500 ms")
-            scorecards.append(
-                CandidateScorecard(
-                    policy=policy, metrics=metrics, passed=not reasons, rejection_reasons=reasons
-                )
-            )
-        passing = [card for card in scorecards if card.passed]
-        if passing:
-            winner = sorted(
-                passing,
-                key=lambda card: (
-                    -card.metrics.ndcg_at_10,
-                    -card.metrics.recall_at_10,
-                    card.metrics.p95_latency_ms,
-                    card.metrics.estimated_cost_usd_per_1k_queries,
-                    card.policy,
-                ),
-            )[0]
-            active_policy: PolicyName | Literal["bootstrap-hybrid"] = winner.policy
-            compiler_reason = (
-                "Selected the highest passing nDCG@10, then Recall@10, lower p95 latency, "
-                "lower estimated cost, and policy name."
-            )
-        else:
-            active_policy = "bootstrap-hybrid"
-            compiler_reason = "No candidate passed every hard gate; retained bootstrap hybrid."
+        scorecards, active_policy, compiler_reason = compile_candidates(
+            raw_metrics, missed_must_pass
+        )
         version_material = json.dumps(
             {
                 "active_policy": active_policy,
@@ -162,33 +124,28 @@ class EvaluationService:
         judgments: list[Judgment],
         index_time_ms: float,
     ) -> tuple[CandidateMetrics, set[str]]:
-        recalls: list[float] = []
-        reciprocal_ranks: list[float] = []
-        ndcgs: list[float] = []
         latencies: list[float] = []
         missed_must_pass: set[str] = set()
+        rankings: dict[str, list[str]] = {}
+        qrels: dict[str, dict[str, int]] = {}
         for judgment in judgments:
             started = perf_counter()
             hits = self._querying.search_policy(sandbox_id, judgment.query, 10, policy)
             latencies.append((perf_counter() - started) * 1_000)
             identifiers = [hit.chunk.id for hit in hits]
-            rank = (
-                identifiers.index(judgment.relevant_chunk_id) + 1
-                if judgment.relevant_chunk_id in identifiers
-                else 0
-            )
-            recalls.append(float(rank > 0))
-            reciprocal_ranks.append(1 / rank if rank else 0.0)
-            ndcgs.append(1 / math.log2(rank + 1) if rank else 0.0)
-            if judgment.relevance == 3 and not rank:
-                missed_must_pass.add(str(judgment.id))
+            judgment_id = str(judgment.id)
+            rankings[judgment_id] = identifiers
+            qrels[judgment_id] = {judgment.relevant_chunk_id: judgment.relevance}
+            if judgment.relevance == 3 and judgment.relevant_chunk_id not in identifiers:
+                missed_must_pass.add(judgment_id)
+        quality = evaluate_rankings(rankings, qrels)
         ordered_latency = sorted(latencies)
         p95_index = max(0, math.ceil(0.95 * len(ordered_latency)) - 1)
         return (
             CandidateMetrics(
-                recall_at_10=sum(recalls) / len(recalls),
-                ndcg_at_10=sum(ndcgs) / len(ndcgs),
-                mrr_at_10=sum(reciprocal_ranks) / len(reciprocal_ranks),
+                recall_at_10=quality.recall_at_10,
+                ndcg_at_10=quality.ndcg_at_10,
+                mrr_at_10=quality.mrr_at_10,
                 p50_latency_ms=median(ordered_latency),
                 p95_latency_ms=ordered_latency[p95_index],
                 index_time_ms=index_time_ms,

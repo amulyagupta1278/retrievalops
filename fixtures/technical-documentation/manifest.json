@@ -2,6 +2,7 @@
   "schema_version": 1,
   "fixture_id": "technical-documentation-scifact-beir-test",
   "domain": "Scientific technical abstracts and expert-written claims",
+  "corpus_unit": "document",
   "source_url": "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/scifact.zip",
   "source_revision": "BEIR SciFact archive md5:5f7d1de60b170fc8027bb7898e2efca1",
   "license": "Claims and annotations: CC BY 4.0; S2ORC abstracts: ODC-By 1.0; attribution required",
@@ -10,7 +11,7 @@
   "provenance_files": [
     {"path": "provenance/LICENSE.md", "sha256": "56ee69bc639cbab8f0b2e4b67091ec5e9390aa99a1d65f0a35e4274686c9a806"}
   ],
-  "corpus": {"path": "corpus.jsonl", "sha256": "dec31c8182f3d744c7d2c09423756fd1d17cbef75808db13ba01cc0aab4d1ac6", "id_field": "_id", "text_field": "text", "expected_records": 5183},
+  "corpus": {"path": "corpus.jsonl", "sha256": "dec31c8182f3d744c7d2c09423756fd1d17cbef75808db13ba01cc0aab4d1ac6", "id_field": "_id", "text_field": "text", "title_field": "title", "expected_records": 5183},
   "queries": {"path": "queries.jsonl", "sha256": "8ff84a7c903f722981cd8d595c022660140c51867b27608a6d4910db86080313", "id_field": "_id", "text_field": "text", "expected_records": 1109},
   "qrels": {"path": "qrels.tsv", "sha256": "0864bb985e0ca2367ba217977e72004d549054b2b06666ed9d4825ac7c21284c", "has_header": true, "query_id_column": 0, "corpus_id_column": 1, "score_column": 2, "expected_records": 339}
 }

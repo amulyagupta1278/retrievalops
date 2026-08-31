@@ -14,6 +14,7 @@ class JsonLinesSpec(BaseModel):
     sha256: Sha256
     id_field: str
     text_field: str
+    title_field: str | None = None
     expected_records: Annotated[int, Field(gt=0)]
 
 
@@ -36,6 +37,7 @@ class FixtureManifest(BaseModel):
     schema_version: Literal[1]
     fixture_id: str
     domain: str
+    corpus_unit: Literal["passage", "document"]
     source_url: str
     source_revision: str
     license: str

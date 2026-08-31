@@ -51,6 +51,7 @@ class BM25Index:
         self.chunk_ids = chunk_ids
         self.documents = documents
         self._lengths = [len(document) for document in documents]
+        self._term_frequencies = [Counter(document) for document in documents]
         self._average_length = sum(self._lengths) / len(self._lengths) if documents else 0.0
         self._document_frequency = Counter(term for document in documents for term in set(document))
 
@@ -62,10 +63,9 @@ class BM25Index:
         query_terms = _tokenize(query)
         scores: list[RankedChunk] = []
         total = len(self.documents)
-        for chunk_id, document, length in zip(
-            self.chunk_ids, self.documents, self._lengths, strict=True
+        for chunk_id, frequencies, length in zip(
+            self.chunk_ids, self._term_frequencies, self._lengths, strict=True
         ):
-            frequencies = Counter(document)
             score = 0.0
             for term in query_terms:
                 frequency = frequencies[term]

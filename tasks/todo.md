@@ -80,7 +80,7 @@ Every task is a focused S/M increment. The full Definition of Done in `tasks/pla
 - **Verify:** fixture validation from a clean checkout.
 
 ### T11 — Prove cross-corpus reproducibility
-- [ ] Run the same benchmark/compiler pipeline for both fixtures and retain every candidate scorecard.
+- [x] Run the same benchmark/compiler pipeline for both fixtures and retain every candidate scorecard.
 - **Depends on:** T08, T10
 - **Acceptance:** repeated runs match within tolerance and honestly report distinct or shared winners.
 - **Verify:** clean two-run comparison.
