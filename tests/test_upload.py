@@ -133,6 +133,26 @@ def test_oversized_upload_is_rejected(tmp_path: Path) -> None:
     assert not list((tmp_path / "artifacts").rglob("source"))
 
 
+def test_pdf_validation_timeout_fails_without_retaining_artifacts(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(
+            storage_root=tmp_path / "artifacts",
+            database_url=f"sqlite:///{tmp_path / 'metadata.db'}",
+            extraction_timeout_seconds=0.000001,
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/sandboxes",
+            files={"file": ("slow.pdf", _blank_pdf(), "application/pdf")},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "DOCUMENT_VALIDATION_TIMEOUT"
+    assert not list((tmp_path / "artifacts").rglob("source"))
+
+
 def test_blank_text_upload_is_rejected(tmp_path: Path) -> None:
     app = create_app(
         Settings(

@@ -28,6 +28,7 @@ retrievalops-worker = "retrievalops.worker:main"
 retrievalops-validate-fixtures = "retrievalops.fixture_cli:main"
 retrievalops-benchmark-fixtures = "retrievalops.controlled_cli:main"
 retrievalops-register-lineage = "retrievalops.lineage_cli:main"
+retrievalops-cleanup = "retrievalops.cleanup_cli:main"
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]

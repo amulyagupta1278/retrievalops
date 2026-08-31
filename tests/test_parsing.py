@@ -1,11 +1,18 @@
 import hashlib
+import time
 from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
 
+import retrievalops.parsing as parsing
 from retrievalops.contracts import Document, SupportedMediaType
-from retrievalops.parsing import DocumentIntegrityError, extract_and_chunk
+from retrievalops.parsing import (
+    DocumentIntegrityError,
+    ExtractionError,
+    extract_and_chunk,
+    extract_and_chunk_with_timeout,
+)
 
 
 def _document(filename: str, media_type: str, content: bytes) -> Document:
@@ -97,3 +104,17 @@ def test_rejects_content_that_does_not_match_document_hash() -> None:
 
     with pytest.raises(DocumentIntegrityError, match="hash"):
         extract_and_chunk(document, b"changed bytes")
+
+
+def test_extraction_deadline_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    content = b"bounded extraction"
+    document = _document("guide.txt", "text/plain", content)
+
+    def slow_extraction(_content: bytes) -> str:
+        time.sleep(1)
+        return "too late"
+
+    monkeypatch.setattr(parsing, "_extract_utf8", slow_extraction)
+
+    with pytest.raises(ExtractionError, match="time limit"):
+        extract_and_chunk_with_timeout(document, content, 0.01)

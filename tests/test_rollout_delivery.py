@@ -12,6 +12,12 @@ def _document(path: str) -> dict[str, object]:
     return payload
 
 
+def _documents(path: str) -> list[dict[str, object]]:
+    payloads = list(yaml.safe_load_all((K8S / path).read_text()))
+    assert all(isinstance(payload, dict) for payload in payloads)
+    return payloads
+
+
 def test_application_rollout_preserves_capacity_and_uses_automatic_gates() -> None:
     rollout = _document("rollout.yaml")
     spec = rollout["spec"]
@@ -55,3 +61,38 @@ def test_release_workflow_waits_for_api_before_updating_worker() -> None:
     assert analysis_wait < worker_update
     assert "rollout undo deployment/retrievalops-worker" in workflow
     assert "champion" not in workflow
+
+
+def test_public_ingress_enforces_https_ip_rate_and_concurrency_limits() -> None:
+    resources = _documents("traefik.yaml")
+    by_name = {resource["metadata"]["name"]: resource for resource in resources}
+
+    secure = by_name["retrievalops"]
+    assert secure["spec"]["tls"]["certResolver"] == "letsencrypt"
+    middleware_names = {item["name"] for item in secure["spec"]["routes"][0]["middlewares"]}
+    assert middleware_names == {"retrievalops-rate-limit", "retrievalops-inflight"}
+    assert by_name["retrievalops-rate-limit"]["spec"]["rateLimit"] == {
+        "average": 60,
+        "period": "1m",
+        "burst": 30,
+        "sourceCriterion": {"ipStrategy": {"ipv6Subnet": 64}},
+    }
+    assert by_name["retrievalops-inflight"]["spec"]["inFlightReq"]["amount"] == 32
+    assert by_name["retrievalops-https-only"]["spec"]["redirectScheme"] == {
+        "scheme": "https",
+        "permanent": True,
+    }
+
+
+def test_cleanup_is_hourly_non_concurrent_and_uses_same_immutable_image() -> None:
+    cleanup = _document("cleanup.yaml")
+    spec = cleanup["spec"]
+    container = spec["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]
+
+    assert spec["schedule"] == "17 * * * *"
+    assert spec["concurrencyPolicy"] == "Forbid"
+    assert container["command"] == ["retrievalops-cleanup"]
+    assert "@sha256:" in container["image"]
+    assert container["securityContext"]["readOnlyRootFilesystem"] is True
+    config = _document("config.yaml")["data"]
+    assert int(config["RETRIEVALOPS_SANDBOX_TTL_HOURS"]) + 1 <= 24

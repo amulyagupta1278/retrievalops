@@ -10,7 +10,7 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 from retrievalops.config import get_settings
 from retrievalops.contracts import JobState
 from retrievalops.metadata import MetadataStore
-from retrievalops.parsing import extract_and_chunk
+from retrievalops.parsing import extract_and_chunk_with_timeout
 from retrievalops.retrieval import BM25Index, DenseIndex, Embedder, SentenceTransformerEmbedder
 from retrievalops.storage import ArtifactStore
 from retrievalops.telemetry import Telemetry
@@ -29,11 +29,13 @@ class IngestionWorker:
         artifacts: ArtifactStore,
         embedder: Embedder,
         telemetry: Telemetry | None = None,
+        extraction_timeout_seconds: float = 30,
     ) -> None:
         self._metadata = metadata
         self._artifacts = artifacts
         self._embedder = embedder
         self._telemetry = telemetry
+        self._extraction_timeout_seconds = extraction_timeout_seconds
 
     def process_next(self) -> ProcessingResult | None:
         claimed = self._metadata.claim_next_ingestion()
@@ -58,7 +60,11 @@ class IngestionWorker:
             source = self._artifacts.read(claimed.storage_key)
             self._metadata.transition_job(claimed.job.id, JobState.validating, JobState.extracting)
             self._record_state(str(claimed.job.id), JobState.extracting, trace_id)
-            extracted = extract_and_chunk(claimed.document, source)
+            extracted = extract_and_chunk_with_timeout(
+                claimed.document,
+                source,
+                self._extraction_timeout_seconds,
+            )
             self._metadata.transition_job(claimed.job.id, JobState.extracting, JobState.indexing)
             self._record_state(str(claimed.job.id), JobState.indexing, trace_id)
             chunks_payload = [chunk.model_dump(mode="json") for chunk in extracted.chunks]
@@ -149,7 +155,13 @@ def main() -> None:
         service_version=settings.service_version,
         otlp_traces_endpoint=settings.otlp_traces_endpoint,
     )
-    worker = IngestionWorker(metadata, artifacts, SentenceTransformerEmbedder(), telemetry)
+    worker = IngestionWorker(
+        metadata,
+        artifacts,
+        SentenceTransformerEmbedder(),
+        telemetry,
+        extraction_timeout_seconds=settings.extraction_timeout_seconds,
+    )
     while True:
         if worker.process_next() is None:
             time.sleep(1)

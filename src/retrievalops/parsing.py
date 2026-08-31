@@ -1,5 +1,9 @@
 import hashlib
 import re
+import signal
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -37,6 +41,31 @@ def extract_and_chunk(document: Document, content: bytes) -> ExtractedDocument:
     if not chunks:
         raise ExtractionError("document contains no extractable tokens")
     return ExtractedDocument(text=text, chunks=chunks)
+
+
+def extract_and_chunk_with_timeout(
+    document: Document, content: bytes, timeout_seconds: float
+) -> ExtractedDocument:
+    with _extraction_deadline(timeout_seconds):
+        return extract_and_chunk(document, content)
+
+
+@contextmanager
+def _extraction_deadline(timeout_seconds: float) -> Iterator[None]:
+    if threading.current_thread() is not threading.main_thread():
+        raise ExtractionError("bounded extraction requires the worker main thread")
+
+    def timed_out(_signum: int, _frame: object) -> None:
+        raise ExtractionError("document extraction exceeded its time limit")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, timed_out)
+    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def _verify_integrity(document: Document, content: bytes) -> None:

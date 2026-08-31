@@ -1,6 +1,8 @@
 import hashlib
+import multiprocessing
 from dataclasses import dataclass
 from io import BytesIO
+from multiprocessing.connection import Connection
 from pathlib import PurePosixPath
 
 from fastapi import UploadFile
@@ -27,7 +29,11 @@ _MEDIA_TYPES: dict[str, frozenset[str]] = {
 
 
 async def validate_upload(
-    upload: UploadFile, *, max_bytes: int, max_pdf_pages: int
+    upload: UploadFile,
+    *,
+    max_bytes: int,
+    max_pdf_pages: int,
+    validation_timeout_seconds: float,
 ) -> ValidatedUpload:
     filename = _safe_filename(upload.filename)
     extension = PurePosixPath(filename).suffix.lower()
@@ -50,7 +56,7 @@ async def validate_upload(
         raise ServiceError(422, "EMPTY_DOCUMENT", "The document contains no text.")
 
     if extension == ".pdf":
-        _validate_pdf(content, max_pdf_pages)
+        _validate_pdf_bounded(content, max_pdf_pages, validation_timeout_seconds)
         canonical_media_type: SupportedMediaType = "application/pdf"
     else:
         _validate_text(content)
@@ -100,3 +106,47 @@ def _validate_pdf(content: bytes, max_pdf_pages: int) -> None:
             "SCANNED_OR_EMPTY_PDF",
             "The PDF must contain extractable text.",
         )
+
+
+def _validate_pdf_bounded(content: bytes, max_pdf_pages: int, timeout_seconds: float) -> None:
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(target=_pdf_validation_process, args=(content, max_pdf_pages, sender))
+    process.start()
+    sender.close()
+    try:
+        if not receiver.poll(timeout_seconds):
+            process.terminate()
+            process.join(timeout=1)
+            raise ServiceError(
+                422,
+                "DOCUMENT_VALIDATION_TIMEOUT",
+                "The document could not be validated within the time limit.",
+            )
+        try:
+            status_code, code, message = receiver.recv()
+        except (EOFError, OSError):
+            status_code, code, message = (
+                422,
+                "INVALID_DOCUMENT",
+                "The PDF file is malformed.",
+            )
+    finally:
+        receiver.close()
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=1)
+    if code is not None:
+        raise ServiceError(status_code, code, message)
+
+
+def _pdf_validation_process(content: bytes, max_pdf_pages: int, sender: Connection) -> None:
+    try:
+        _validate_pdf(content, max_pdf_pages)
+        sender.send((200, None, ""))
+    except ServiceError as error:
+        sender.send((error.status_code, error.code, error.message))
+    except Exception:
+        sender.send((422, "INVALID_DOCUMENT", "The PDF file is malformed."))
+    finally:
+        sender.close()

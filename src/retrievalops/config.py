@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     otlp_traces_endpoint: str | None = None
     drift_min_approved_feedback: int = Field(default=3, ge=3)
     query_drift_threshold: float = Field(default=0.15, ge=0, le=1)
+    allowed_origins: list[str] = Field(default_factory=list)
+    sandbox_requests_per_minute: int = Field(default=120, gt=0, le=10_000)
+    extraction_timeout_seconds: float = Field(default=30, gt=0, le=300)
 
     @model_validator(mode="after")
     def validate_lineage_configuration(self) -> "Settings":

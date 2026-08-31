@@ -175,3 +175,5 @@ jobs:
             kubectl -n retrievalops rollout status deployment/retrievalops-worker --timeout=5m
             exit 1
           fi
+          sed "s#ghcr.io/amulyagupta1278/retrievalops@sha256:0\{64\}#${IMAGE}@${DIGEST}#" deploy/k8s/cleanup.yaml \
+            | kubectl apply -f -

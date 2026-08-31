@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4, uuid5
 
 from fastapi import FastAPI, File, Header, Request, Response, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from pydantic import BaseModel, Field
 from starlette.middleware.body_limit import RequestBodyLimitMiddleware
@@ -22,12 +24,15 @@ from retrievalops.contracts import (
     PolicyDecision,
     Sandbox,
 )
+from retrievalops.docs_page import api_docs_page, api_docs_script
 from retrievalops.errors import ServiceError, service_error_handler
 from retrievalops.evaluation import EvaluationService
+from retrievalops.evidence_page import evidence_page
 from retrievalops.learning import FeedbackGovernance, RetrainingWorkflow
 from retrievalops.lifecycle import SandboxLifecycle
 from retrievalops.lineage import LineageRegistry, ephemeral_lineage
 from retrievalops.metadata import MetadataStore, create_capability_token
+from retrievalops.public import SandboxRateLimitMiddleware, SecurityHeadersMiddleware
 from retrievalops.querying import QueryService
 from retrievalops.release import PolicyReleaseController
 from retrievalops.retrieval import Embedder, SentenceTransformerEmbedder
@@ -121,7 +126,13 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         service_version=runtime_settings.service_version,
         otlp_traces_endpoint=runtime_settings.otlp_traces_endpoint,
     )
-    ingestion_worker = IngestionWorker(metadata_store, artifact_store, runtime_embedder, telemetry)
+    ingestion_worker = IngestionWorker(
+        metadata_store,
+        artifact_store,
+        runtime_embedder,
+        telemetry,
+        extraction_timeout_seconds=runtime_settings.extraction_timeout_seconds,
+    )
     query_service = QueryService(artifact_store, runtime_embedder)
     lineage_registry = (
         LineageRegistry(runtime_settings.mlflow_tracking_uri, runtime_settings.mlflow_artifact_root)
@@ -199,14 +210,34 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         version=runtime_settings.service_version,
         description="Evidence-driven retrieval policy release control.",
         lifespan=lifespan,
+        docs_url=None,
     )
     application.add_middleware(
         RequestBodyLimitMiddleware,
         max_body_size=runtime_settings.max_upload_bytes + 64 * 1024,
     )
+    application.add_middleware(
+        SandboxRateLimitMiddleware,
+        limit=runtime_settings.sandbox_requests_per_minute,
+    )
+    application.add_middleware(SecurityHeadersMiddleware)
+    if runtime_settings.allowed_origins:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=runtime_settings.allowed_origins,
+            allow_credentials=False,
+            allow_methods=["DELETE", "GET", "POST", "PUT"],
+            allow_headers=["Content-Type", "X-Request-ID", "X-Sandbox-Token"],
+            max_age=600,
+        )
     telemetry.install(application)
     application.add_exception_handler(ServiceError, service_error_handler)
     application.get("/healthz", response_model=HealthResponse, tags=["operations"])(health)
+    application.get("/", response_class=HTMLResponse, include_in_schema=False)(evidence_page)
+    application.get("/docs", response_class=HTMLResponse, include_in_schema=False)(api_docs_page)
+    application.get("/docs-init.js", response_class=Response, include_in_schema=False)(
+        api_docs_script
+    )
 
     @application.post(
         "/v1/sandboxes",
@@ -222,6 +253,7 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
             file,
             max_bytes=runtime_settings.max_upload_bytes,
             max_pdf_pages=runtime_settings.max_pdf_pages,
+            validation_timeout_seconds=runtime_settings.extraction_timeout_seconds,
         )
         now = datetime.now(UTC)
         sandbox = Sandbox(
