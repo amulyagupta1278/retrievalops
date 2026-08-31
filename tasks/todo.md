@@ -97,7 +97,7 @@ Every task is a focused S/M increment. The full Definition of Done in `tasks/pla
 ## Day 5 — Operations and learning
 
 ### T13 — Instrument runtime behavior
-- [ ] Add structured privacy-safe logs, bounded Prometheus metrics, traces, and alerts for requests, latency, errors, policies, fallback, jobs, drift, and releases.
+- [x] Add structured privacy-safe logs, bounded Prometheus metrics, traces, and alerts for requests, latency, errors, policies, fallback, jobs, drift, and releases.
 - **Depends on:** T06, T09
 - **Acceptance:** trace IDs connect events; document/query contents are absent by default; alert rules validate.
 - **Verify:** observability tests and Prometheus rule validation.

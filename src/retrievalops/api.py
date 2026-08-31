@@ -5,7 +5,8 @@ from time import perf_counter
 from typing import Annotated
 from uuid import UUID, uuid4, uuid5
 
-from fastapi import FastAPI, File, Header, Response, UploadFile, status
+from fastapi import FastAPI, File, Header, Request, Response, UploadFile, status
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from pydantic import BaseModel, Field
 from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 
@@ -28,6 +29,7 @@ from retrievalops.metadata import MetadataStore, create_capability_token
 from retrievalops.querying import QueryService
 from retrievalops.retrieval import Embedder, SentenceTransformerEmbedder
 from retrievalops.storage import ArtifactStore
+from retrievalops.telemetry import Telemetry
 from retrievalops.uploads import validate_upload
 from retrievalops.worker import IngestionWorker
 
@@ -99,7 +101,12 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
     artifact_store = ArtifactStore(runtime_settings.storage_root)
     sandbox_lifecycle = SandboxLifecycle(metadata_store, artifact_store)
     runtime_embedder = embedder or SentenceTransformerEmbedder()
-    ingestion_worker = IngestionWorker(metadata_store, artifact_store, runtime_embedder)
+    telemetry = Telemetry(
+        service_name=runtime_settings.service_name,
+        service_version=runtime_settings.service_version,
+        otlp_traces_endpoint=runtime_settings.otlp_traces_endpoint,
+    )
+    ingestion_worker = IngestionWorker(metadata_store, artifact_store, runtime_embedder, telemetry)
     query_service = QueryService(artifact_store, runtime_embedder)
     lineage_registry = (
         LineageRegistry(runtime_settings.mlflow_tracking_uri, runtime_settings.mlflow_artifact_root)
@@ -134,7 +141,10 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         application.state.sandbox_lifecycle = sandbox_lifecycle
         application.state.ingestion_worker = ingestion_worker
         application.state.lineage_registry = lineage_registry
-        yield
+        try:
+            yield
+        finally:
+            telemetry.tracer_provider.shutdown()
 
     application = FastAPI(
         title="RetrievalOps",
@@ -146,6 +156,7 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         RequestBodyLimitMiddleware,
         max_body_size=runtime_settings.max_upload_bytes + 64 * 1024,
     )
+    telemetry.install(application)
     application.add_exception_handler(ServiceError, service_error_handler)
     application.get("/healthz", response_model=HealthResponse, tags=["operations"])(health)
 
@@ -156,6 +167,7 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         tags=["sandboxes"],
     )
     async def create_sandbox(
+        request: Request,
         file: Annotated[UploadFile, File(description="One PDF, TXT, or Markdown document")],
     ) -> CreateSandboxResponse:
         validated = await validate_upload(
@@ -180,11 +192,21 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         job = IngestionJob(id=uuid4(), sandbox_id=sandbox.id, state=JobState.queued)
         token = create_capability_token()
         storage_key = artifact_store.write_source(sandbox.id, validated.content)
+        trace_carrier: dict[str, str] = {}
+        TraceContextTextMapPropagator().inject(trace_carrier)
         try:
-            metadata_store.create_upload(sandbox, document, job, token, storage_key)
+            metadata_store.create_upload(
+                sandbox,
+                document,
+                job,
+                token,
+                storage_key,
+                traceparent=trace_carrier.get("traceparent"),
+            )
         except Exception:
             artifact_store.delete_sandbox(sandbox.id)
             raise
+        telemetry.record_job_transition(str(job.id), JobState.queued, request.state.trace_id)
         return CreateSandboxResponse(
             sandbox_id=sandbox.id,
             sandbox_token=token,
@@ -228,6 +250,7 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
     def query_sandbox(
         sandbox_id: UUID,
         request: QueryRequest,
+        http_request: Request,
         sandbox_token: Annotated[str, Header(alias="X-Sandbox-Token", min_length=1)],
     ) -> QueryResponse:
         if not metadata_store.token_matches(sandbox_id, sandbox_token):
@@ -235,16 +258,20 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         if metadata_store.sandbox_state(sandbox_id) != JobState.ready:
             raise ServiceError(409, "SANDBOX_NOT_READY", "Sandbox ingestion is not complete.")
         started = perf_counter()
+        active_policy, _ = query_service.active_policy(sandbox_id)
         try:
             hits, policy_version = query_service.search(sandbox_id, request.query, request.top_k)
         except (OSError, ValueError, RuntimeError):
+            telemetry.record_retrieval(active_policy, "unavailable")
             raise ServiceError(
                 503, "RETRIEVAL_UNAVAILABLE", "The retrieval index is unavailable."
             ) from None
         elapsed_ms = (perf_counter() - started) * 1_000
-        active_policy, _ = query_service.active_policy(sandbox_id)
+        telemetry.record_retrieval(active_policy, "success")
+        if active_policy == "bootstrap-hybrid":
+            telemetry.record_fallback("bootstrap_policy")
         return QueryResponse(
-            trace_id=uuid4(),
+            trace_id=UUID(hex=http_request.state.trace_id),
             policy=active_policy,
             policy_version=policy_version,
             latency_ms=elapsed_ms,

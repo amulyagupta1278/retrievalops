@@ -6,7 +6,17 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, create_engine, delete, func, select
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    create_engine,
+    delete,
+    func,
+    inspect,
+    select,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from retrievalops.contracts import (
@@ -51,6 +61,7 @@ class JobRecord(Base):
     sandbox_id: Mapped[str] = mapped_column(ForeignKey("sandboxes.id"), nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(64))
+    traceparent: Mapped[str | None] = mapped_column(String(55))
 
 
 class JudgmentRecord(Base):
@@ -77,6 +88,7 @@ class ClaimedIngestion:
     job: IngestionJob
     document: Document
     storage_key: str
+    traceparent: str | None
 
 
 def create_capability_token() -> str:
@@ -102,6 +114,12 @@ class MetadataStore:
 
     def initialize(self) -> None:
         Base.metadata.create_all(self._engine)
+        columns = {column["name"] for column in inspect(self._engine).get_columns("ingestion_jobs")}
+        if "traceparent" not in columns:
+            with self._engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "ALTER TABLE ingestion_jobs ADD COLUMN traceparent VARCHAR(55)"
+                )
 
     def create_upload(
         self,
@@ -110,6 +128,7 @@ class MetadataStore:
         job: IngestionJob,
         token: str,
         storage_key: str,
+        traceparent: str | None = None,
     ) -> None:
         with Session(self._engine) as session, session.begin():
             session.add(
@@ -137,6 +156,7 @@ class MetadataStore:
                     sandbox_id=str(job.sandbox_id),
                     state=job.state,
                     error_code=job.error_code,
+                    traceparent=traceparent,
                 )
             )
 
@@ -184,6 +204,7 @@ class MetadataStore:
                     sha256=document_record.sha256,
                 ),
                 storage_key=document_record.storage_key,
+                traceparent=job_record.traceparent,
             )
 
     def transition_job(

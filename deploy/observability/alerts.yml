@@ -1,0 +1,51 @@
+groups:
+  - name: retrievalops-user-symptoms
+    rules:
+      - alert: RetrievalOpsHighErrorRate
+        expr: sum(rate(retrievalops_http_requests_total{status_class="5xx"}[5m])) / clamp_min(sum(rate(retrievalops_http_requests_total[5m])), 0.001) > 0.01
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: More than 1% of RetrievalOps requests are failing
+          runbook_url: https://github.com/amulyagupta1278/rag-retrieval-dissertation/blob/main/docs/runbooks/observability.md#high-error-rate
+      - alert: RetrievalOpsHighQueryLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(retrievalops_http_request_duration_seconds_bucket{route="/v1/sandboxes/{sandbox_id}/query"}[5m]))) > 0.5
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: Retrieval p95 latency exceeds the 500 ms release gate
+          runbook_url: https://github.com/amulyagupta1278/rag-retrieval-dissertation/blob/main/docs/runbooks/observability.md#high-query-latency
+      - alert: RetrievalOpsIngestionFailures
+        expr: increase(retrievalops_ingestion_job_transitions_total{state="failed"}[15m]) > 2
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Multiple users have received failed ingestion jobs
+          runbook_url: https://github.com/amulyagupta1278/rag-retrieval-dissertation/blob/main/docs/runbooks/observability.md#ingestion-failures
+      - alert: RetrievalOpsFallbackSpike
+        expr: sum(increase(retrievalops_fallbacks_total[10m])) > 5
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Retrieval fallback usage is elevated
+          runbook_url: https://github.com/amulyagupta1278/rag-retrieval-dissertation/blob/main/docs/runbooks/observability.md#fallback-spike
+      - alert: RetrievalOpsDriftWorkflowFailure
+        expr: increase(retrievalops_drift_events_total{outcome="workflow_failed"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: A drift-triggered candidate workflow failed while champion stayed active
+          runbook_url: https://github.com/amulyagupta1278/rag-retrieval-dissertation/blob/main/docs/runbooks/observability.md#drift-workflow-failure
+      - alert: RetrievalOpsReleaseRollback
+        expr: sum(increase(retrievalops_release_events_total{outcome=~"aborted|rolled_back"}[15m])) > 0
+        for: 1m
+        labels:
+          severity: ticket
+        annotations:
+          summary: A policy or application release was aborted or rolled back
+          runbook_url: https://github.com/amulyagupta1278/rag-retrieval-dissertation/blob/main/docs/runbooks/observability.md#release-rollback

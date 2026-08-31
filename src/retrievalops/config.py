@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     mlflow_tracking_uri: str | None = None
     mlflow_artifact_root: Path = Path(".data/mlflow-artifacts")
     dependency_lock_hash: str = "development"
+    otlp_traces_endpoint: str | None = None
 
     @model_validator(mode="after")
     def validate_lineage_configuration(self) -> "Settings":

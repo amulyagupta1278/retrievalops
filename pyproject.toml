@@ -16,6 +16,9 @@ dependencies = [
   "sqlalchemy>=2.0,<3",
   "sentence-transformers>=5.1,<6",
   "uvicorn[standard]>=0.35,<1",
+  "prometheus-client>=0.22,<1",
+  "opentelemetry-sdk>=1.36,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.36,<2",
 ]
 
 [project.scripts]
@@ -35,6 +38,7 @@ dev = [
   "httpx2>=2.12,<3",
   "mypy>=1.17,<2",
   "pytest>=8.4,<10",
+  "pyyaml>=6.0,<7",
   "ruff>=0.12,<1",
 ]
 
