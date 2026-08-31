@@ -1,0 +1,18 @@
+[
+  {
+    "experiment_name": "retrievalops-controlled",
+    "run_id": "5af68d0c533a478c9c678810fa2abcf4",
+    "registered_model_name": "retrievalops.controlled.government-schemes-pilot-v2-seed42",
+    "model_version": "1",
+    "alias": "champion",
+    "lineage_hash": "805d3841355b459889ecce3389352d30f5bd6b82af912ed7f28007c5caf992a4"
+  },
+  {
+    "experiment_name": "retrievalops-controlled",
+    "run_id": "6e59c5fc28554e2fa054d14a908570dd",
+    "registered_model_name": "retrievalops.controlled.technical-documentation-scifact-beir-test",
+    "model_version": "1",
+    "alias": "champion",
+    "lineage_hash": "a00db3ca3db4ee25b99fc292775b531b55d9a3974b02af1ba796d287fbad58ba"
+  }
+]

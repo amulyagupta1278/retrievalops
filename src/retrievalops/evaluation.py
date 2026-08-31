@@ -4,6 +4,7 @@ import math
 import re
 from statistics import median
 from time import perf_counter
+from typing import Protocol
 from uuid import UUID, uuid5
 
 from retrievalops.benchmark import evaluate_rankings
@@ -28,10 +29,20 @@ _QUESTION_TEMPLATES = (
 )
 
 
+class PolicyRegistrar(Protocol):
+    def __call__(self, sandbox_id: UUID, decision: PolicyDecision) -> None: ...
+
+
 class EvaluationService:
-    def __init__(self, artifacts: ArtifactStore, querying: QueryService) -> None:
+    def __init__(
+        self,
+        artifacts: ArtifactStore,
+        querying: QueryService,
+        registrar: PolicyRegistrar | None = None,
+    ) -> None:
         self._artifacts = artifacts
         self._querying = querying
+        self._registrar = registrar
 
     def chunks(self, sandbox_id: UUID) -> list[Chunk]:
         content = self._artifacts.read(f"{sandbox_id}/chunks.json")
@@ -75,7 +86,10 @@ class EvaluationService:
         try:
             existing = json.loads(self._artifacts.read(f"{sandbox_id}/active_policy.json"))
             if existing["evidence_hash"] == evidence_hash:
-                return PolicyDecision.model_validate(existing)
+                decision = PolicyDecision.model_validate(existing)
+                if self._registrar is not None:
+                    self._registrar(sandbox_id, decision)
+                return decision
         except FileNotFoundError:
             pass
 
@@ -112,6 +126,8 @@ class EvaluationService:
             scorecards=scorecards,
             compiler_reason=compiler_reason,
         )
+        if self._registrar is not None:
+            self._registrar(sandbox_id, decision)
         payload = decision.model_dump(mode="json")
         self._artifacts.write_immutable_json(sandbox_id, f"policy-{policy_version}.json", payload)
         self._artifacts.write_json(sandbox_id, "active_policy.json", payload)

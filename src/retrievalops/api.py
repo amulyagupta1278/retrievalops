@@ -23,6 +23,7 @@ from retrievalops.contracts import (
 from retrievalops.errors import ServiceError, service_error_handler
 from retrievalops.evaluation import EvaluationService
 from retrievalops.lifecycle import SandboxLifecycle
+from retrievalops.lineage import LineageRegistry, ephemeral_lineage
 from retrievalops.metadata import MetadataStore, create_capability_token
 from retrievalops.querying import QueryService
 from retrievalops.retrieval import Embedder, SentenceTransformerEmbedder
@@ -100,7 +101,29 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
     runtime_embedder = embedder or SentenceTransformerEmbedder()
     ingestion_worker = IngestionWorker(metadata_store, artifact_store, runtime_embedder)
     query_service = QueryService(artifact_store, runtime_embedder)
-    evaluation_service = EvaluationService(artifact_store, query_service)
+    lineage_registry = (
+        LineageRegistry(runtime_settings.mlflow_tracking_uri, runtime_settings.mlflow_artifact_root)
+        if runtime_settings.mlflow_tracking_uri
+        else None
+    )
+
+    def register_ephemeral(sandbox_id: UUID, decision: PolicyDecision) -> None:
+        if lineage_registry is None:
+            return
+        lineage_registry.register(
+            ephemeral_lineage(
+                decision,
+                sandbox_id=str(sandbox_id),
+                commit_sha=runtime_settings.build_sha,
+                dependency_lock_hash=runtime_settings.dependency_lock_hash,
+            )
+        )
+
+    evaluation_service = EvaluationService(
+        artifact_store,
+        query_service,
+        registrar=register_ephemeral if lineage_registry is not None else None,
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -110,6 +133,7 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         application.state.artifact_store = artifact_store
         application.state.sandbox_lifecycle = sandbox_lifecycle
         application.state.ingestion_worker = ingestion_worker
+        application.state.lineage_registry = lineage_registry
         yield
 
     application = FastAPI(

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from retrievalops import __version__
@@ -24,8 +24,26 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
     max_pdf_pages: int = Field(default=200, gt=0)
     sandbox_ttl_hours: int = Field(default=24, gt=0)
+    mlflow_tracking_uri: str | None = None
+    mlflow_artifact_root: Path = Path(".data/mlflow-artifacts")
+    dependency_lock_hash: str = "development"
+
+    @model_validator(mode="after")
+    def validate_lineage_configuration(self) -> "Settings":
+        if self.mlflow_tracking_uri:
+            if not _is_hex_digest(self.build_sha, minimum=7):
+                raise ValueError("MLflow requires build_sha to be a hexadecimal commit digest")
+            if not _is_hex_digest(self.dependency_lock_hash, minimum=64):
+                raise ValueError("MLflow requires a SHA-256 dependency_lock_hash")
+        return self
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def _is_hex_digest(value: str, *, minimum: int) -> bool:
+    return minimum <= len(value) <= 64 and all(
+        character in "0123456789abcdef" for character in value
+    )

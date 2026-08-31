@@ -4,11 +4,14 @@ version = "0.1.0"
 description = "Evidence-driven retrieval policy release control"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "alembic>=1.16,<2",
   "faiss-cpu>=1.12,<2",
   "fastapi>=0.116,<1",
+  "mlflow-skinny>=3.5,<4",
   "numpy>=2.0,<3",
   "pydantic-settings>=2.10,<3",
   "pypdf>=6.0,<7",
+  "psycopg[binary]>=3.2,<4",
   "python-multipart>=0.0.20,<1",
   "sqlalchemy>=2.0,<3",
   "sentence-transformers>=5.1,<6",
@@ -21,6 +24,7 @@ retrievalops-api-smoke = "retrievalops.smoke:main"
 retrievalops-worker = "retrievalops.worker:main"
 retrievalops-validate-fixtures = "retrievalops.fixture_cli:main"
 retrievalops-benchmark-fixtures = "retrievalops.controlled_cli:main"
+retrievalops-register-lineage = "retrievalops.lineage_cli:main"
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]
@@ -40,6 +44,7 @@ packages = ["src/retrievalops"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+markers = ["postgres: requires a PostgreSQL tracking backend"]
 
 [tool.ruff]
 extend-exclude = ["work"]
