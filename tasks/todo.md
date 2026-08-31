@@ -34,19 +34,19 @@ Every task is a focused S/M increment. The full Definition of Done in `tasks/pla
 - **Verify:** parser and determinism tests for all supported formats.
 
 ### T05 — Build three indexes
-- [ ] Build BM25, dense FAISS, and hybrid RRF indexes asynchronously with recorded model/configuration hashes.
+- [x] Build BM25, dense FAISS, and hybrid RRF indexes asynchronously with recorded model/configuration hashes.
 - **Depends on:** T04
 - **Acceptance:** all indexes are queryable and isolated by sandbox; partial failure does not mark the job ready.
 - **Verify:** focused index tests and clean rebuild comparison.
 
 ### T06 — Serve bootstrap hybrid retrieval
-- [ ] Expose job polling and capability-protected query API using `bootstrap-hybrid`, with ranked passages, latency, trace, policy, and version.
+- [x] Expose job polling and capability-protected query API using `bootstrap-hybrid`, with ranked passages, latency, trace, policy, and version.
 - **Depends on:** T05
 - **Acceptance:** query is unavailable before ready and usable after ready; cross-sandbox access fails.
 - **Verify:** upload-to-query integration test and runtime smoke.
 
 ### Checkpoint B
-- [ ] A new user uploads a sample document and queries useful passages after ingestion completes.
+- [x] A new user uploads a sample document and queries useful passages after ingestion completes.
 
 ## Day 3 — Evidence-driven optimization
 

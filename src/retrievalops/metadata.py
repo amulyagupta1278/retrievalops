@@ -1,13 +1,15 @@
 import hashlib
 import hmac
 import secrets
+from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, create_engine, delete, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-from retrievalops.contracts import Document, IngestionJob, Sandbox
+from retrievalops.contracts import Document, IngestionJob, JobState, Sandbox, SupportedMediaType
 
 
 class Base(DeclarativeBase):
@@ -50,6 +52,13 @@ class DeletionAuditRecord(Base):
     sandbox_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimedIngestion:
+    job: IngestionJob
+    document: Document
+    storage_key: str
 
 
 def create_capability_token() -> str:
@@ -117,6 +126,89 @@ class MetadataStore:
         with Session(self._engine) as session:
             record = session.get(SandboxRecord, str(sandbox_id))
             return record is not None and _verify_token(token, record.token_hash)
+
+    def claim_next_ingestion(self) -> ClaimedIngestion | None:
+        """Atomically claim one durable queued job.
+
+        PostgreSQL translates this to row locking with SKIP LOCKED. SQLite ignores the
+        locking clause, which is sufficient for the single-worker local profile.
+        """
+        with Session(self._engine) as session, session.begin():
+            job_record = session.scalar(
+                select(JobRecord)
+                .where(JobRecord.state == JobState.queued)
+                .order_by(JobRecord.id)
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            )
+            if job_record is None:
+                return None
+            job_record.state = JobState.validating
+            document_record = session.scalar(
+                select(DocumentRecord).where(DocumentRecord.sandbox_id == job_record.sandbox_id)
+            )
+            if document_record is None:
+                job_record.state = JobState.failed
+                job_record.error_code = "DOCUMENT_METADATA_MISSING"
+                return None
+            return ClaimedIngestion(
+                job=IngestionJob(
+                    id=UUID(job_record.id),
+                    sandbox_id=UUID(job_record.sandbox_id),
+                    state=JobState.validating,
+                ),
+                document=Document(
+                    id=UUID(document_record.id),
+                    sandbox_id=UUID(document_record.sandbox_id),
+                    filename=document_record.filename,
+                    media_type=cast(SupportedMediaType, document_record.media_type),
+                    size_bytes=document_record.size_bytes,
+                    sha256=document_record.sha256,
+                ),
+                storage_key=document_record.storage_key,
+            )
+
+    def transition_job(
+        self, job_id: UUID, expected: JobState, target: JobState, error_code: str | None = None
+    ) -> None:
+        IngestionJob(id=job_id, sandbox_id=UUID(int=0), state=expected).transition_to(target)
+        with Session(self._engine) as session, session.begin():
+            record = session.get(JobRecord, str(job_id))
+            if record is None or record.state != expected:
+                raise RuntimeError(f"job is not in expected state {expected}")
+            record.state = target
+            record.error_code = error_code
+
+    def job_for_sandbox(self, job_id: UUID, sandbox_id: UUID) -> IngestionJob | None:
+        with Session(self._engine) as session:
+            record = session.get(JobRecord, str(job_id))
+            if record is None or record.sandbox_id != str(sandbox_id):
+                return None
+            return IngestionJob(
+                id=UUID(record.id),
+                sandbox_id=UUID(record.sandbox_id),
+                state=JobState(record.state),
+                error_code=record.error_code,
+            )
+
+    def get_job(self, job_id: UUID) -> IngestionJob | None:
+        with Session(self._engine) as session:
+            record = session.get(JobRecord, str(job_id))
+            if record is None:
+                return None
+            return IngestionJob(
+                id=UUID(record.id),
+                sandbox_id=UUID(record.sandbox_id),
+                state=JobState(record.state),
+                error_code=record.error_code,
+            )
+
+    def sandbox_state(self, sandbox_id: UUID) -> JobState | None:
+        with Session(self._engine) as session:
+            state = session.scalar(
+                select(JobRecord.state).where(JobRecord.sandbox_id == str(sandbox_id))
+            )
+            return JobState(state) if state is not None else None
 
     def contains_token(self, token: str) -> bool:
         with Session(self._engine) as session:

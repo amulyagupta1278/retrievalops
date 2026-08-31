@@ -1,11 +1,12 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from time import perf_counter
 from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, File, Header, Response, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 
 from retrievalops.config import Settings, get_settings
@@ -13,8 +14,11 @@ from retrievalops.contracts import CreateSandboxResponse, Document, IngestionJob
 from retrievalops.errors import ServiceError, service_error_handler
 from retrievalops.lifecycle import SandboxLifecycle
 from retrievalops.metadata import MetadataStore, create_capability_token
+from retrievalops.querying import QueryService
+from retrievalops.retrieval import Embedder, SentenceTransformerEmbedder
 from retrievalops.storage import ArtifactStore
 from retrievalops.uploads import validate_upload
+from retrievalops.worker import IngestionWorker
 
 
 class HealthResponse(BaseModel):
@@ -22,6 +26,33 @@ class HealthResponse(BaseModel):
     service: str
     version: str
     build_sha: str
+
+
+class JobResponse(BaseModel):
+    id: UUID
+    sandbox_id: UUID
+    state: JobState
+    error_code: str | None
+
+
+class QueryRequest(BaseModel):
+    query: Annotated[str, Field(min_length=1, max_length=1_000)]
+    top_k: Annotated[int, Field(ge=1, le=20)] = 10
+
+
+class QueryResult(BaseModel):
+    chunk_id: str
+    text: str
+    score: float
+    rank: int
+
+
+class QueryResponse(BaseModel):
+    trace_id: UUID
+    policy: str
+    policy_version: str
+    latency_ms: float
+    results: list[QueryResult]
 
 
 def health() -> HealthResponse:
@@ -34,11 +65,14 @@ def health() -> HealthResponse:
     )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, embedder: Embedder | None = None) -> FastAPI:
     runtime_settings = settings or get_settings()
     metadata_store = MetadataStore(runtime_settings.database_url)
     artifact_store = ArtifactStore(runtime_settings.storage_root)
     sandbox_lifecycle = SandboxLifecycle(metadata_store, artifact_store)
+    runtime_embedder = embedder or SentenceTransformerEmbedder()
+    ingestion_worker = IngestionWorker(metadata_store, artifact_store, runtime_embedder)
+    query_service = QueryService(artifact_store, runtime_embedder)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -47,6 +81,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.metadata_store = metadata_store
         application.state.artifact_store = artifact_store
         application.state.sandbox_lifecycle = sandbox_lifecycle
+        application.state.ingestion_worker = ingestion_worker
         yield
 
     application = FastAPI(
@@ -122,6 +157,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             reason="USER_REQUEST",
         )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @application.get("/v1/jobs/{job_id}", response_model=JobResponse, tags=["ingestion"])
+    def get_job(
+        job_id: UUID,
+        sandbox_token: Annotated[str, Header(alias="X-Sandbox-Token", min_length=1)],
+    ) -> JobResponse:
+        job = metadata_store.get_job(job_id)
+        if job is None or not metadata_store.token_matches(job.sandbox_id, sandbox_token):
+            raise ServiceError(404, "JOB_NOT_FOUND", "The ingestion job was not found.")
+        return JobResponse(**job.model_dump())
+
+    @application.post(
+        "/v1/sandboxes/{sandbox_id}/query",
+        response_model=QueryResponse,
+        tags=["retrieval"],
+    )
+    def query_sandbox(
+        sandbox_id: UUID,
+        request: QueryRequest,
+        sandbox_token: Annotated[str, Header(alias="X-Sandbox-Token", min_length=1)],
+    ) -> QueryResponse:
+        if not metadata_store.token_matches(sandbox_id, sandbox_token):
+            raise ServiceError(404, "SANDBOX_NOT_FOUND", "The sandbox was not found.")
+        if metadata_store.sandbox_state(sandbox_id) != JobState.ready:
+            raise ServiceError(409, "SANDBOX_NOT_READY", "Sandbox ingestion is not complete.")
+        started = perf_counter()
+        try:
+            hits, policy_version = query_service.search(sandbox_id, request.query, request.top_k)
+        except (OSError, ValueError, RuntimeError):
+            raise ServiceError(
+                503, "RETRIEVAL_UNAVAILABLE", "The retrieval index is unavailable."
+            ) from None
+        elapsed_ms = (perf_counter() - started) * 1_000
+        return QueryResponse(
+            trace_id=uuid4(),
+            policy="bootstrap-hybrid-rrf",
+            policy_version=policy_version,
+            latency_ms=elapsed_ms,
+            results=[
+                QueryResult(
+                    chunk_id=hit.chunk.id,
+                    text=hit.chunk.text,
+                    score=hit.score,
+                    rank=rank,
+                )
+                for rank, hit in enumerate(hits, start=1)
+            ],
+        )
 
     return application
 

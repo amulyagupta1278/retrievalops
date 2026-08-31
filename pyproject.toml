@@ -4,17 +4,21 @@ version = "0.1.0"
 description = "Evidence-driven retrieval policy release control"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "faiss-cpu>=1.12,<2",
   "fastapi>=0.116,<1",
+  "numpy>=2.0,<3",
   "pydantic-settings>=2.10,<3",
   "pypdf>=6.0,<7",
   "python-multipart>=0.0.20,<1",
   "sqlalchemy>=2.0,<3",
+  "sentence-transformers>=5.1,<6",
   "uvicorn[standard]>=0.35,<1",
 ]
 
 [project.scripts]
 retrievalops-api = "retrievalops.cli:main"
 retrievalops-api-smoke = "retrievalops.smoke:main"
+retrievalops-worker = "retrievalops.worker:main"
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]
