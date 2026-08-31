@@ -5,6 +5,10 @@ linting, strict typing, the complete test suite against PostgreSQL, both control
 dependency audit, Prometheus rule validation, a container smoke test, and a HIGH/CRITICAL image
 scan. A `main` push publishes only after both gate jobs pass.
 
+Hosted quality checks use the Ubuntu runner's system Python 3.12 because uv does not publish every
+CPython patch build for every platform. The runtime image remains pinned separately to Python
+3.12.14 by digest, so the shipped interpreter is reproducible.
+
 Published images use only `ghcr.io/<owner>/<repository>:sha-<40-character-commit>` for deployment.
 The workflow emits a registry-backed GitHub artifact attestation and signs the immutable digest
 with Sigstore keyless signing. Deployments must resolve and store that digest; mutable tags are

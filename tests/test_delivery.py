@@ -32,6 +32,8 @@ def test_ci_gates_publish_on_main_and_uses_immutable_action_revisions() -> None:
     assert "cosign sign --yes" in workflow_text
     assert "subject-digest: ${{ steps.build.outputs.digest }}" in workflow_text
     assert "RETRIEVALOPS_TEST_POSTGRES_URI" in workflow_text
+    assert "uv sync --frozen --python 3.12 --no-managed-python" in workflow_text
+    assert "uv python install 3.12.14" not in workflow_text
     assert "retrievalops-benchmark-fixtures" in workflow_text
     assert "pip-audit==2.10.1" in workflow_text
     assert 'promtool" check rules deploy/observability/alerts.yml' in workflow_text
