@@ -15,6 +15,7 @@ dependencies = [
   "python-multipart>=0.0.20,<1",
   "sqlalchemy>=2.0,<3",
   "sentence-transformers>=5.1,<6",
+  "torch>=2.7,<3",
   "uvicorn[standard]>=0.35,<1",
   "prometheus-client>=0.22,<1",
   "opentelemetry-sdk>=1.36,<2",
@@ -63,3 +64,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 packages = ["retrievalops"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

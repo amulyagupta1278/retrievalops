@@ -15,6 +15,7 @@ def test_runtime_image_is_pinned_offline_and_unprivileged() -> None:
     assert "USER 10001:10001" in dockerfile
     assert "HEALTHCHECK" in dockerfile
     assert "uv sync --frozen --no-dev" in dockerfile
+    assert "uv sync --frozen --no-dev --no-editable" in dockerfile
 
 
 def test_ci_gates_publish_on_main_and_uses_immutable_action_revisions() -> None:

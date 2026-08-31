@@ -26,3 +26,6 @@ kept only in the sandbox artifact namespace; MLflow receives hashes, metrics, al
 The public demo runs on one K3s node. Two API replicas plus `maxUnavailable: 0`, readiness probes,
 Traefik weighted routing, and a disruption budget provide zero-downtime application rollout, but
 the cluster itself is not highly available.
+
+The dependency lock pins PyTorch to its explicit CPU wheel index so Linux images do not carry CUDA
+runtimes: https://docs.astral.sh/uv/guides/integration/pytorch/#using-a-pytorch-index

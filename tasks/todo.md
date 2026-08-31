@@ -86,13 +86,13 @@ Every task is a focused S/M increment. The full Definition of Done in `tasks/pla
 - **Verify:** clean two-run comparison.
 
 ### T12 — Register complete lineage
-- [ ] Store fixture and ephemeral policy versions in separate MLflow namespaces with dataset/index/configuration/commit lineage and aliases.
+- [x] Store fixture and ephemeral policy versions in separate MLflow namespaces with dataset/index/configuration/commit lineage and aliases.
 - **Depends on:** T09, T11
 - **Acceptance:** missing lineage blocks registration; uploaded text never enters MLflow; a run can be reconstructed from hashes.
 - **Verify:** registry tests against local MLflow/PostgreSQL and content-leak assertions.
 
 ### Checkpoint D
-- [ ] Reconstruct a controlled-fixture decision solely from tracked inputs and lineage.
+- [x] Reconstruct a controlled-fixture decision solely from tracked inputs and lineage.
 
 ## Day 5 — Operations and learning
 

@@ -1,18 +1,18 @@
 [
   {
     "experiment_name": "retrievalops-controlled",
-    "run_id": "98eb83430d9c4211812cbb68e7e3cc14",
+    "run_id": "a80a44de15f34556835357897fbcc298",
     "registered_model_name": "retrievalops.controlled.government-schemes-pilot-v2-seed42",
     "model_version": "1",
     "alias": "champion",
-    "lineage_hash": "95e60e33f85ec15ae21faebb27f7b4fab5b696ba476d9540c11558b300a5161f"
+    "lineage_hash": "cacee30d45145dfdb607259f1d13892fef7f2709b89484e0db7471c1b5a8ddc0"
   },
   {
     "experiment_name": "retrievalops-controlled",
-    "run_id": "26bb3f6809be4135a4b4d460aded1a0c",
+    "run_id": "8fc9d856109e4ba3b2e8aacf0b2cb0e0",
     "registered_model_name": "retrievalops.controlled.technical-documentation-scifact-beir-test",
     "model_version": "1",
     "alias": "champion",
-    "lineage_hash": "8fe0044e83975f5c71c3f82e57ae14e8ab880eee8f4021dc9cf2c6393781b92f"
+    "lineage_hash": "39e01027bc522fdd6e2922d01c71c292ed3e4ffb75afe7db0d649c6e447bd8ba"
   }
 ]

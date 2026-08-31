@@ -34,6 +34,7 @@ def test_application_rollout_preserves_capacity_and_uses_automatic_gates() -> No
     ]
     assert len([step for step in canary["steps"] if "analysis" in step]) == 3
     container = spec["template"]["spec"]["containers"][0]
+    assert spec["template"]["spec"]["securityContext"]["fsGroup"] == 10001
     assert "@sha256:" in container["image"]
     assert container["readinessProbe"]["httpGet"]["path"] == "/healthz"
     assert container["resources"]["requests"]
