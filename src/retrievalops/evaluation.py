@@ -68,6 +68,15 @@ class EvaluationService:
         return suggestions
 
     def optimize(self, sandbox_id: UUID, judgments: list[Judgment]) -> PolicyDecision:
+        decision = self.evaluate_candidate(sandbox_id, judgments)
+        if self._registrar is not None:
+            self._registrar(sandbox_id, decision)
+        self._artifacts.write_json(
+            sandbox_id, "active_policy.json", decision.model_dump(mode="json")
+        )
+        return decision
+
+    def evaluate_candidate(self, sandbox_id: UUID, judgments: list[Judgment]) -> PolicyDecision:
         evidence = [
             {
                 "query": judgment.query,
@@ -86,10 +95,7 @@ class EvaluationService:
         try:
             existing = json.loads(self._artifacts.read(f"{sandbox_id}/active_policy.json"))
             if existing["evidence_hash"] == evidence_hash:
-                decision = PolicyDecision.model_validate(existing)
-                if self._registrar is not None:
-                    self._registrar(sandbox_id, decision)
-                return decision
+                return PolicyDecision.model_validate(existing)
         except FileNotFoundError:
             pass
 
@@ -126,11 +132,8 @@ class EvaluationService:
             scorecards=scorecards,
             compiler_reason=compiler_reason,
         )
-        if self._registrar is not None:
-            self._registrar(sandbox_id, decision)
         payload = decision.model_dump(mode="json")
         self._artifacts.write_immutable_json(sandbox_id, f"policy-{policy_version}.json", payload)
-        self._artifacts.write_json(sandbox_id, "active_policy.json", payload)
         return decision
 
     def _benchmark(

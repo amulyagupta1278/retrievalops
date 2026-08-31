@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     mlflow_artifact_root: Path = Path(".data/mlflow-artifacts")
     dependency_lock_hash: str = "development"
     otlp_traces_endpoint: str | None = None
+    drift_min_approved_feedback: int = Field(default=3, ge=3)
+    query_drift_threshold: float = Field(default=0.15, ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_lineage_configuration(self) -> "Settings":

@@ -50,7 +50,7 @@ class RegisteredLineage(BaseModel):
     run_id: str
     registered_model_name: str
     model_version: str
-    alias: Literal["champion"] = "champion"
+    alias: Literal["champion", "candidate"] = "champion"
     lineage_hash: Sha256
 
 
@@ -59,19 +59,22 @@ class LineageRegistry:
         self._client = MlflowClient(tracking_uri=tracking_uri, registry_uri=tracking_uri)
         self._artifact_root = artifact_root
 
-    def register(self, lineage: LineageRecord) -> RegisteredLineage:
+    def register(
+        self, lineage: LineageRecord, *, alias: Literal["champion", "candidate"] = "champion"
+    ) -> RegisteredLineage:
         experiment_name = f"retrievalops-{lineage.scope}"
         model_name = self._model_name(lineage)
         existing = self._existing_version(model_name, lineage.lineage_hash)
         if existing is not None:
             if not existing.run_id:
                 raise ValueError("existing registered version has no source run")
-            self._client.set_registered_model_alias(model_name, "champion", existing.version)
+            self._client.set_registered_model_alias(model_name, alias, existing.version)
             return RegisteredLineage(
                 experiment_name=experiment_name,
                 run_id=str(existing.run_id),
                 registered_model_name=model_name,
                 model_version=str(existing.version),
+                alias=alias,
                 lineage_hash=lineage.lineage_hash,
             )
         experiment = self._client.get_experiment_by_name(experiment_name)
@@ -110,7 +113,7 @@ class LineageRegistry:
                 },
                 description="Retrieval policy metadata bundle; no corpus or query text.",
             )
-            self._client.set_registered_model_alias(model_name, "champion", version.version)
+            self._client.set_registered_model_alias(model_name, alias, version.version)
             self._client.set_terminated(run.info.run_id, "FINISHED")
         except Exception:
             self._client.set_terminated(run.info.run_id, "FAILED")
@@ -120,6 +123,7 @@ class LineageRegistry:
             run_id=run.info.run_id,
             registered_model_name=model_name,
             model_version=str(version.version),
+            alias=alias,
             lineage_hash=lineage.lineage_hash,
         )
 

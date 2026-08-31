@@ -81,6 +81,30 @@ def test_controlled_and_ephemeral_namespaces_register_and_reconstruct(tmp_path: 
     assert str(alias.version) == controlled_registration.model_version
 
 
+def test_candidate_alias_does_not_replace_champion(tmp_path: Path) -> None:
+    tracking_uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
+    registry = LineageRegistry(tracking_uri, tmp_path / "artifacts")
+    champion = _controlled_record().model_copy(
+        update={"scope": "ephemeral", "subject_id": "candidate-isolation"}
+    )
+    candidate = champion.model_copy(update={"evidence_hash": "f" * 64})
+
+    champion_registration = registry.register(champion, alias="champion")
+    candidate_registration = registry.register(candidate, alias="candidate")
+    client = MlflowClient(tracking_uri=tracking_uri, registry_uri=tracking_uri)
+    champion_alias = client.get_model_version_by_alias(
+        champion_registration.registered_model_name, "champion"
+    )
+    candidate_alias = client.get_model_version_by_alias(
+        candidate_registration.registered_model_name, "candidate"
+    )
+
+    assert champion_registration.alias == "champion"
+    assert candidate_registration.alias == "candidate"
+    assert str(champion_alias.version) == champion_registration.model_version
+    assert str(candidate_alias.version) == candidate_registration.model_version
+
+
 def test_ephemeral_registration_does_not_persist_document_or_query_text(tmp_path: Path) -> None:
     document_sentinel = "PRIVATE-DOCUMENT-CONTENT-6d64c8"
     query_sentinel = "PRIVATE-QUERY-CONTENT-3b2671"

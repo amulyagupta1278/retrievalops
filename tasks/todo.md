@@ -103,13 +103,13 @@ Every task is a focused S/M increment. The full Definition of Done in `tasks/pla
 - **Verify:** observability tests and Prometheus rule validation.
 
 ### T14 — Govern feedback and retraining
-- [ ] Isolate feedback, add audited approval, detect corpus/query drift, and trigger idempotent benchmark/router retraining.
+- [x] Isolate feedback, add audited approval, detect corpus/query drift, and trigger idempotent benchmark/router retraining.
 - **Depends on:** T12, T13
 - **Acceptance:** unapproved evidence cannot train; synthetic drift triggers exactly one candidate run; failure preserves champion.
 - **Verify:** feedback, drift, idempotency, and failure-path tests.
 
 ### Checkpoint E
-- [ ] Approved evidence creates a candidate; unapproved evidence cannot affect training or champion.
+- [x] Approved evidence creates a candidate; unapproved evidence cannot affect training or champion.
 
 ## Day 6 — Independent release paths
 

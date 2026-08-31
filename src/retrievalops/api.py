@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID, uuid4, uuid5
 
 from fastapi import FastAPI, File, Header, Request, Response, UploadFile, status
@@ -15,6 +15,7 @@ from retrievalops.contracts import (
     CreateSandboxResponse,
     Document,
     EvaluationSuggestion,
+    Feedback,
     IngestionJob,
     JobState,
     Judgment,
@@ -23,6 +24,7 @@ from retrievalops.contracts import (
 )
 from retrievalops.errors import ServiceError, service_error_handler
 from retrievalops.evaluation import EvaluationService
+from retrievalops.learning import FeedbackGovernance, RetrainingWorkflow
 from retrievalops.lifecycle import SandboxLifecycle
 from retrievalops.lineage import LineageRegistry, ephemeral_lineage
 from retrievalops.metadata import MetadataStore, create_capability_token
@@ -85,6 +87,18 @@ class JudgmentsResponse(BaseModel):
     optimization_unlocked: bool
 
 
+class FeedbackRequest(BaseModel):
+    query: Annotated[str, Field(min_length=1, max_length=1_000)]
+    relevant_chunk_id: Annotated[str, Field(min_length=1, max_length=128)]
+    relevance: Annotated[int, Field(ge=0, le=3)]
+
+
+class FeedbackReceipt(BaseModel):
+    id: UUID
+    status: Literal["pending"]
+    submitted_at: datetime
+
+
 def health() -> HealthResponse:
     settings = get_settings()
     return HealthResponse(
@@ -114,7 +128,9 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         else None
     )
 
-    def register_ephemeral(sandbox_id: UUID, decision: PolicyDecision) -> None:
+    def register_ephemeral(
+        sandbox_id: UUID, decision: PolicyDecision, *, alias: Literal["champion", "candidate"]
+    ) -> None:
         if lineage_registry is None:
             return
         lineage_registry.register(
@@ -123,14 +139,32 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
                 sandbox_id=str(sandbox_id),
                 commit_sha=runtime_settings.build_sha,
                 dependency_lock_hash=runtime_settings.dependency_lock_hash,
-            )
+            ),
+            alias=alias,
         )
+
+    def register_champion(sandbox_id: UUID, decision: PolicyDecision) -> None:
+        register_ephemeral(sandbox_id, decision, alias="champion")
+
+    def register_candidate(sandbox_id: UUID, decision: PolicyDecision) -> None:
+        register_ephemeral(sandbox_id, decision, alias="candidate")
 
     evaluation_service = EvaluationService(
         artifact_store,
         query_service,
-        registrar=register_ephemeral if lineage_registry is not None else None,
+        registrar=register_champion if lineage_registry is not None else None,
     )
+    feedback_governance = FeedbackGovernance(metadata_store)
+    retraining_workflow = RetrainingWorkflow(
+        metadata_store,
+        artifact_store,
+        evaluation_service,
+        telemetry,
+        minimum_approved_feedback=runtime_settings.drift_min_approved_feedback,
+        query_drift_threshold=runtime_settings.query_drift_threshold,
+        registrar=register_candidate if lineage_registry is not None else None,
+    )
+    feedback_governance.bind_retraining(retraining_workflow.run)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -141,6 +175,8 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
         application.state.sandbox_lifecycle = sandbox_lifecycle
         application.state.ingestion_worker = ingestion_worker
         application.state.lineage_registry = lineage_registry
+        application.state.feedback_governance = feedback_governance
+        application.state.retraining_workflow = retraining_workflow
         try:
             yield
         finally:
@@ -380,6 +416,27 @@ def create_app(settings: Settings | None = None, embedder: Embedder | None = Non
             raise ServiceError(
                 404, "POLICY_NOT_OPTIMIZED", "No optimized policy exists for this sandbox."
             ) from None
+
+    @application.post(
+        "/v1/sandboxes/{sandbox_id}/feedback",
+        response_model=FeedbackReceipt,
+        status_code=status.HTTP_202_ACCEPTED,
+        tags=["feedback"],
+    )
+    def submit_feedback(
+        sandbox_id: UUID,
+        request: FeedbackRequest,
+        sandbox_token: Annotated[str, Header(alias="X-Sandbox-Token", min_length=1)],
+    ) -> Feedback:
+        require_ready_sandbox(sandbox_id, sandbox_token)
+        valid_chunk_ids = {chunk.id for chunk in evaluation_service.chunks(sandbox_id)}
+        if request.relevant_chunk_id not in valid_chunk_ids:
+            raise ServiceError(
+                422,
+                "INVALID_RELEVANT_CHUNK",
+                "The feedback passage does not belong to this sandbox.",
+            )
+        return feedback_governance.submit(sandbox_id, **request.model_dump())
 
     return application
 

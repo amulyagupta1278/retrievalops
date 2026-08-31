@@ -18,6 +18,18 @@ class JobState(StrEnum):
     failed = "failed"
 
 
+class FeedbackStatus(StrEnum):
+    pending = "pending"
+    approved = "approved"
+
+
+class RetrainingStatus(StrEnum):
+    not_triggered = "not_triggered"
+    running = "running"
+    candidate_ready = "candidate_ready"
+    failed = "failed"
+
+
 _ALLOWED_JOB_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
     JobState.queued: frozenset({JobState.validating, JobState.failed}),
     JobState.validating: frozenset({JobState.extracting, JobState.failed}),
@@ -88,7 +100,7 @@ class Judgment(BaseModel):
     id: UUID
     sandbox_id: UUID
     query: Annotated[str, Field(min_length=1, max_length=1_000)]
-    relevant_chunk_id: Annotated[str, Field(min_length=1)]
+    relevant_chunk_id: Annotated[str, Field(min_length=1, max_length=128)]
     relevance: Annotated[int, Field(ge=0, le=3)]
     reviewed: bool
 
@@ -97,6 +109,44 @@ class Judgment(BaseModel):
         if not self.relevant_chunk_id.startswith(f"{self.sandbox_id}:"):
             raise ValueError("relevant chunk must belong to the judgment sandbox")
         return self
+
+
+class Feedback(BaseModel):
+    id: UUID
+    sandbox_id: UUID
+    query: Annotated[str, Field(min_length=1, max_length=1_000)]
+    relevant_chunk_id: Annotated[str, Field(min_length=1, max_length=128)]
+    relevance: Annotated[int, Field(ge=0, le=3)]
+    status: FeedbackStatus = FeedbackStatus.pending
+    submitted_at: datetime
+    approval_audit_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def chunk_belongs_to_sandbox(self) -> Self:
+        if not self.relevant_chunk_id.startswith(f"{self.sandbox_id}:"):
+            raise ValueError("relevant chunk must belong to the feedback sandbox")
+        return self
+
+
+class FeedbackApproval(BaseModel):
+    audit_id: UUID
+    sandbox_id: UUID
+    approved: Annotated[int, Field(gt=0)]
+    evidence_hash: Sha256
+    approved_by: Annotated[str, Field(min_length=1, max_length=128)]
+    reason: Annotated[str, Field(min_length=10, max_length=500)]
+    approved_at: datetime
+
+
+class RetrainingRun(BaseModel):
+    retraining_id: UUID | None = None
+    sandbox_id: UUID
+    idempotency_key: Sha256 | None = None
+    status: RetrainingStatus
+    approved_evidence_count: Annotated[int, Field(ge=0)]
+    drift_reasons: list[str] = Field(default_factory=list)
+    policy_version: str | None = None
+    error_code: str | None = None
 
 
 class RetrievalTrace(BaseModel):

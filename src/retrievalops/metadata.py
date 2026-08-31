@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import secrets
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,13 +18,19 @@ from sqlalchemy import (
     inspect,
     select,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from retrievalops.contracts import (
     Document,
+    Feedback,
+    FeedbackApproval,
+    FeedbackStatus,
     IngestionJob,
     JobState,
     Judgment,
+    RetrainingRun,
+    RetrainingStatus,
     Sandbox,
     SupportedMediaType,
 )
@@ -81,6 +88,43 @@ class DeletionAuditRecord(Base):
     sandbox_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class FeedbackRecord(Base):
+    __tablename__ = "feedback"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    sandbox_id: Mapped[str] = mapped_column(ForeignKey("sandboxes.id"), nullable=False)
+    query: Mapped[str] = mapped_column(String(1000), nullable=False)
+    relevant_chunk_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    relevance: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    approval_audit_id: Mapped[str | None] = mapped_column(String(36))
+
+
+class FeedbackApprovalRecord(Base):
+    __tablename__ = "feedback_approvals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    sandbox_id: Mapped[str] = mapped_column(ForeignKey("sandboxes.id"), nullable=False)
+    evidence_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    approved_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class RetrainingRunRecord(Base):
+    __tablename__ = "retraining_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    sandbox_id: Mapped[str] = mapped_column(ForeignKey("sandboxes.id"), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    approved_evidence_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    drift_reasons: Mapped[str] = mapped_column(String(256), nullable=False)
+    policy_version: Mapped[str | None] = mapped_column(String(64))
+    error_code: Mapped[str | None] = mapped_column(String(64))
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +311,15 @@ class MetadataStore:
             sandbox = session.get(SandboxRecord, identifier)
             if sandbox is None:
                 return False
+            session.execute(
+                delete(FeedbackApprovalRecord).where(
+                    FeedbackApprovalRecord.sandbox_id == identifier
+                )
+            )
+            session.execute(delete(FeedbackRecord).where(FeedbackRecord.sandbox_id == identifier))
+            session.execute(
+                delete(RetrainingRunRecord).where(RetrainingRunRecord.sandbox_id == identifier)
+            )
             session.execute(delete(JobRecord).where(JobRecord.sandbox_id == identifier))
             session.execute(delete(JudgmentRecord).where(JudgmentRecord.sandbox_id == identifier))
             session.execute(delete(DocumentRecord).where(DocumentRecord.sandbox_id == identifier))
@@ -328,3 +381,154 @@ class MetadataStore:
                 )
                 for record in records
             ]
+
+    def create_feedback(self, feedback: Feedback) -> None:
+        with Session(self._engine) as session, session.begin():
+            session.add(
+                FeedbackRecord(
+                    id=str(feedback.id),
+                    sandbox_id=str(feedback.sandbox_id),
+                    query=feedback.query,
+                    relevant_chunk_id=feedback.relevant_chunk_id,
+                    relevance=feedback.relevance,
+                    status=feedback.status,
+                    submitted_at=feedback.submitted_at,
+                    approval_audit_id=None,
+                )
+            )
+
+    def feedback(self, sandbox_id: UUID, *, approved_only: bool = False) -> list[Feedback]:
+        with Session(self._engine) as session:
+            statement = (
+                select(FeedbackRecord)
+                .where(FeedbackRecord.sandbox_id == str(sandbox_id))
+                .order_by(FeedbackRecord.id)
+            )
+            if approved_only:
+                statement = statement.where(FeedbackRecord.status == FeedbackStatus.approved)
+            records = session.scalars(statement).all()
+            return [
+                Feedback(
+                    id=UUID(record.id),
+                    sandbox_id=UUID(record.sandbox_id),
+                    query=record.query,
+                    relevant_chunk_id=record.relevant_chunk_id,
+                    relevance=record.relevance,
+                    status=FeedbackStatus(record.status),
+                    submitted_at=record.submitted_at,
+                    approval_audit_id=(
+                        UUID(record.approval_audit_id) if record.approval_audit_id else None
+                    ),
+                )
+                for record in records
+            ]
+
+    def approve_feedback(self, approval: FeedbackApproval, feedback_ids: list[UUID]) -> None:
+        with Session(self._engine) as session, session.begin():
+            records = session.scalars(
+                select(FeedbackRecord)
+                .where(
+                    FeedbackRecord.sandbox_id == str(approval.sandbox_id),
+                    FeedbackRecord.id.in_([str(identifier) for identifier in feedback_ids]),
+                    FeedbackRecord.status == FeedbackStatus.pending,
+                )
+                .with_for_update()
+            ).all()
+            if len(records) != len(set(feedback_ids)):
+                raise ValueError("feedback approval contains missing or non-pending records")
+            session.add(
+                FeedbackApprovalRecord(
+                    id=str(approval.audit_id),
+                    sandbox_id=str(approval.sandbox_id),
+                    evidence_hash=approval.evidence_hash,
+                    approved_by=approval.approved_by,
+                    reason=approval.reason,
+                    approved_at=approval.approved_at,
+                )
+            )
+            for record in records:
+                record.status = FeedbackStatus.approved
+                record.approval_audit_id = str(approval.audit_id)
+
+    def retraining_run_count(self, sandbox_id: str | UUID) -> int:
+        with Session(self._engine) as session:
+            count = session.scalar(
+                select(func.count())
+                .select_from(RetrainingRunRecord)
+                .where(RetrainingRunRecord.sandbox_id == str(sandbox_id))
+            )
+            return int(count or 0)
+
+    def feedback_approval_count(self, sandbox_id: str | UUID) -> int:
+        with Session(self._engine) as session:
+            count = session.scalar(
+                select(func.count())
+                .select_from(FeedbackApprovalRecord)
+                .where(FeedbackApprovalRecord.sandbox_id == str(sandbox_id))
+            )
+            return int(count or 0)
+
+    def create_retraining_run(self, run: RetrainingRun) -> bool:
+        assert run.retraining_id is not None
+        assert run.idempotency_key is not None
+        try:
+            with Session(self._engine) as session, session.begin():
+                session.add(
+                    RetrainingRunRecord(
+                        id=str(run.retraining_id),
+                        sandbox_id=str(run.sandbox_id),
+                        idempotency_key=run.idempotency_key,
+                        status=run.status,
+                        approved_evidence_count=run.approved_evidence_count,
+                        drift_reasons=json.dumps(run.drift_reasons, separators=(",", ":")),
+                        policy_version=run.policy_version,
+                        error_code=run.error_code,
+                    )
+                )
+        except IntegrityError:
+            return False
+        return True
+
+    def retraining_run(self, idempotency_key: str) -> RetrainingRun | None:
+        with Session(self._engine) as session:
+            record = session.scalar(
+                select(RetrainingRunRecord).where(
+                    RetrainingRunRecord.idempotency_key == idempotency_key
+                )
+            )
+            return _retraining_run(record) if record is not None else None
+
+    def finish_retraining_run(
+        self,
+        idempotency_key: str,
+        *,
+        status: RetrainingStatus,
+        policy_version: str | None = None,
+        error_code: str | None = None,
+    ) -> RetrainingRun:
+        with Session(self._engine) as session, session.begin():
+            record = session.scalar(
+                select(RetrainingRunRecord)
+                .where(RetrainingRunRecord.idempotency_key == idempotency_key)
+                .with_for_update()
+            )
+            if record is None:
+                raise ValueError("retraining run does not exist")
+            record.status = status
+            record.policy_version = policy_version
+            record.error_code = error_code
+            session.flush()
+            return _retraining_run(record)
+
+
+def _retraining_run(record: RetrainingRunRecord) -> RetrainingRun:
+    return RetrainingRun(
+        retraining_id=UUID(record.id),
+        sandbox_id=UUID(record.sandbox_id),
+        idempotency_key=record.idempotency_key,
+        status=RetrainingStatus(record.status),
+        approved_evidence_count=record.approved_evidence_count,
+        drift_reasons=json.loads(record.drift_reasons),
+        policy_version=record.policy_version,
+        error_code=record.error_code,
+    )
