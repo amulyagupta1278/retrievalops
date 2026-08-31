@@ -1,0 +1,42 @@
+{
+  "boundary_attestation": {
+    "credential_access_n": 0,
+    "generation_call_n": 0,
+    "historical_artifact_mutation_n": 0,
+    "network_api_call_n": 0,
+    "phase7_execution_n": 0,
+    "push_n": 0
+  },
+  "commands": {
+    "focused_tests": "python -m pytest -q tests/test_phase6_seed42_final.py tests/test_finalize_phase6_seed42.py tests/test_evaluate_phase6_seed42.py tests/test_phase7_gate.py",
+    "full_tests": "python -m pytest",
+    "whitespace_check": "git diff --check --cached"
+  },
+  "manifest_verification": {
+    "reference_n": 81,
+    "result": "pass"
+  },
+  "phase7": {
+    "dependency_gate": "OPEN",
+    "execution_authorized": false,
+    "provider_model_prompt_frozen": false
+  },
+  "repository": {
+    "branch": "codex/dissertation-rebuild-v2",
+    "phase6_start_commit": "0ce83baa31acea709ad0aacfa95c649ebe20b82c"
+  },
+  "secret_scan": {
+    "result": "pass",
+    "scope": "tracked and proposed non-ignored files; ignored credential files excluded and not accessed"
+  },
+  "tests": {
+    "deselected_n": 0,
+    "failed_n": 0,
+    "focused_passed_n": 24,
+    "full_passed_n": 381,
+    "historical_xfailed_n": 9,
+    "skipped_n": 0,
+    "xpassed_n": 0
+  },
+  "verification_date": "2026-07-28"
+}

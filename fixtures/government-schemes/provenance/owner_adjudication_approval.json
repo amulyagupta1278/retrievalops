@@ -1,0 +1,26 @@
+{
+  "approval_date": "2026-07-28",
+  "approval_source": "human owner handoff in Codex conversation",
+  "final_adjudication_csv": "outputs/019f9e9c-e14b-7b51-87af-e2cfca5b2a6e/phase6_adjudication_final/phase6_owner_adjudication_14_FINAL.csv",
+  "final_adjudication_csv_sha256": "9fd10b3267fbcd339c3ce65b2c5796a99b17672f69c32d4a39cbdc9055fa4aa7",
+  "owner_reported_checks": {
+    "blank_grades": 0,
+    "blank_rationales": 0,
+    "final_grade_counts": {
+      "1": 3,
+      "2": 11
+    },
+    "multi_part_rows_restored_to_grade_2": 9,
+    "protected_mismatches": 0,
+    "pmay_g_rationale_corrected": true,
+    "svanidhi_rationale_corrected": true
+  },
+  "owner_statement": "Owner corrections applied and validated. Final decisions: Grade 1=3, Grade 2=11. Blank grades/rationales: 0. Protected mismatches: 0. Nine multi-part rows restored to Grade 2. SVANidhi and PMAY-G rationales corrected. Next: give final CSV to repository Codex for Phase 6 label/qrels/metrics freeze.",
+  "reconstruction_contract": {
+    "adjudication_csv_contains_complete_seed42_disagreement_set": true,
+    "listed_rows_use_second_pass_grade_for_agreement_calculation": true,
+    "listed_rows_use_final_grade_for_final_labels": true,
+    "sampled_rows_not_listed_in_adjudication_csv_are_owner_regrade_agreements": true
+  },
+  "status": "owner_approved_for_phase6_seed42_freeze"
+}

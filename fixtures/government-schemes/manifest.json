@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "fixture_id": "government-schemes-pilot-v2-seed42",
+  "domain": "Indian government welfare schemes",
+  "source_url": "https://github.com/amulyagupta1278/rag-retrieval-dissertation",
+  "source_revision": "dissertation-phase8-r4-final@732bad84a69cf2d49133e32f5bec4fc8fb1871ad",
+  "license": "Source-specific Government of India copyright policies; source URLs and attribution are retained in the corpus",
+  "evidence_status": "owner_adjudicated",
+  "evidence_provenance": "Phase 6 seed-42 blind regrade plus owner adjudication; frozen qrels scope is the 755-pair union top-10 pool",
+  "provenance_files": [
+    {"path": "provenance/freeze_manifest.json", "sha256": "c20f6f1d39ddf10f17b497fbab0d9e46202af5672e9d232728737ae9e747fb8b"},
+    {"path": "provenance/owner_adjudication_approval.json", "sha256": "18feada943a6b018604b9c718f43393766131b750c8dcec72c0e526c98afe61d"},
+    {"path": "provenance/final_verification.json", "sha256": "66485d69f65001bb0eb4f17caf92e805a7387ac10b1deee7571f113f4efe7b5c"}
+  ],
+  "corpus": {"path": "corpus.jsonl", "sha256": "70c1e3b8b0380809adea000654333a5921132ab7608ff328a9fa7934e8f43aa6", "id_field": "chunk_id", "text_field": "text", "expected_records": 140},
+  "queries": {"path": "queries.jsonl", "sha256": "0abd328ff639a05e80559202a018df0bd50aaf875f8d6b7753af925cc8a89c4b", "id_field": "question_id", "text_field": "question", "expected_records": 34},
+  "qrels": {"path": "qrels.tsv", "sha256": "c167689e5f0a1e7412d17baab56c6789e1612bb08121255fc0c153fecd1e077f", "has_header": false, "query_id_column": 0, "corpus_id_column": 2, "score_column": 3, "expected_records": 755}
+}

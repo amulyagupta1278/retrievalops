@@ -74,7 +74,7 @@ Every task is a focused S/M increment. The full Definition of Done in `tasks/pla
 ## Day 4 — Controlled evidence and lineage
 
 ### T10 — Freeze controlled fixtures
-- [ ] Import and validate the government-schemes and technical-documentation corpora and reviewed evaluations.
+- [x] Import and validate the government-schemes and technical-documentation corpora and reviewed evaluations.
 - **Depends on:** T04
 - **Acceptance:** sources, licenses, revisions, manifests, and hashes are recorded before candidate comparison.
 - **Verify:** fixture validation from a clean checkout.
