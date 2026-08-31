@@ -14,7 +14,7 @@
     "tolerances": {
       "hashes_and_active_policy": "exact",
       "index_time_ms": "max(30000 ms absolute, 100% relative)",
-      "p95_latency_ms": "max(25 ms absolute, 50% relative)",
+      "p95_latency_ms": "both runs <= 500 ms release gate",
       "quality_metrics": "exact"
     }
   },

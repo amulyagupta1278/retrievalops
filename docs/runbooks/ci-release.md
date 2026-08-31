@@ -9,6 +9,10 @@ Hosted quality checks use the Ubuntu runner's system Python 3.12 because uv does
 CPython patch build for every platform. The runtime image remains pinned separately to Python
 3.12.14 by digest, so the shipped interpreter is reproducible.
 
+Controlled quality metrics, hashes, indexes, and policy decisions must reproduce exactly. Timing
+is hardware-dependent, so both independent runs must satisfy the release contract's 500 ms p95
+ceiling instead of matching a developer laptop within a fixed millisecond delta.
+
 Published images use only `ghcr.io/<owner>/<repository>:sha-<40-character-commit>` for deployment.
 The workflow emits a registry-backed GitHub artifact attestation and signs the immutable digest
 with Sigstore keyless signing. Deployments must resolve and store that digest; mutable tags are

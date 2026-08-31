@@ -22,6 +22,8 @@ from retrievalops.retrieval import (
     reciprocal_rank_fusion,
 )
 
+_P95_RELEASE_LIMIT_MS = 500.0
+
 
 class ControlledRun:
     def __init__(
@@ -69,7 +71,7 @@ class ReproducibilityReport:
             "tolerances": {
                 "quality_metrics": "exact",
                 "hashes_and_active_policy": "exact",
-                "p95_latency_ms": "max(25 ms absolute, 50% relative)",
+                "p95_latency_ms": "both runs <= 500 ms release gate",
                 "index_time_ms": "max(30000 ms absolute, 100% relative)",
             },
         }
@@ -240,7 +242,7 @@ def _latency_within_tolerance(first: ControlledRun, second: ControlledRun) -> bo
     for card in first.scorecards:
         first_p95 = card.metrics.p95_latency_ms
         second_p95 = second_cards[card.policy].metrics.p95_latency_ms
-        if abs(first_p95 - second_p95) > max(25.0, first_p95 * 0.5):
+        if max(first_p95, second_p95) > _P95_RELEASE_LIMIT_MS:
             return False
     return True
 
