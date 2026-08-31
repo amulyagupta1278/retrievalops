@@ -1,0 +1,14 @@
+.data/
+.env
+.env.local
+.env.*.local
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.key
+*.pem
+__pycache__/
+dist/
+outputs/
+work/
