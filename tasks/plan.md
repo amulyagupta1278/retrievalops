@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Build a publicly accessible RetrievalOps platform where a user uploads one supported document and, once asynchronous ingestion completes, receives a usable hybrid retrieval API. The user confirms at least three generated question–passage judgments; RetrievalOps then benchmarks BM25, dense, and hybrid retrieval, selects a policy under explicit quality and latency gates, and safely releases it.
+Build a publicly accessible RetrievalOps platform where a user uploads one supported document and, once ingestion completes, receives a usable hybrid retrieval API. The user confirms at least three generated question–passage judgments; RetrievalOps then benchmarks BM25, dense, and hybrid retrieval, selects a policy under explicit quality and latency gates, and safely releases it.
 
 The two fixed corpora remain controlled fixtures for reproducibility, regression tests, drift simulation, canary releases, and rollback proof. The product demonstrates Forward Deployed Engineering, AI engineering, backend engineering, and MLOps through visible operational evidence rather than a RAG answer demo alone.
 
