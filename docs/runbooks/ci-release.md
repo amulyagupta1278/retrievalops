@@ -31,6 +31,11 @@ Configure a GitHub ruleset for `main` that:
 Until this ruleset and one green hosted run are independently visible, T16 is not considered
 fully proven even when every local check passes.
 
+The required approval is supplied by the least-privilege GitHub App described in the
+[AI reviewer runbook](../ai-reviewer.md). Enable the one-approval rule only after a test PR proves
+that the App approval counts toward branch protection. Reviewer control-plane changes remain a
+manual administrator path and cannot approve themselves.
+
 The production deploy job is skipped until the repository variable `PUBLIC_HOSTNAME` is set. This
 allows a new repository to prove and publish its immutable image without targeting absent
 infrastructure. Adding the variable activates the protected production-environment path, whose

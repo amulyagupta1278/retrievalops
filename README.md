@@ -54,4 +54,4 @@ and an Argo Rollouts 10/50/100 application canary.
 
 See [architecture](docs/architecture.md), [threat model](docs/threat-model.md),
 [deployment](docs/public-deployment.md), [cost](docs/cost.md), [limitations](docs/limitations.md),
-and the [five-minute demo](docs/demo.md).
+the [AI reviewer](docs/ai-reviewer.md), and the [five-minute demo](docs/demo.md).
