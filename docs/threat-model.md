@@ -4,6 +4,8 @@
 
 Uploaded content, derived chunks/indexes, capability tokens, judgments, feedback, policy lineage,
 database credentials, signing identity, and the production kubeconfig.
+The AI reviewer additionally protects its GitHub App private key, installation tokens, model API
+key, review policy, and the integrity of merge approvals.
 
 ## Trust boundaries and controls
 
@@ -23,6 +25,11 @@ database credentials, signing identity, and the production kubeconfig.
   read-only root filesystem, bounded resources, and a default-deny network policy.
 - Hourly cleanup deletes expired originals, indexes, judgments, feedback, approvals, and token
   hashes. Early deletion is idempotent and produces only non-content audit evidence.
+- AI review runs only after CI from a workflow stored on `main`. It checks out `main`, never PR
+  code, while holding its short-lived App token. Forks and untrusted authors are rejected;
+  reviewer-control changes require manual review. Diff and model text are untrusted data, model
+  output is schema-validated and bounded, detected credentials are not sent to the model, and any
+  missing or ambiguous result fails closed.
 
 ## Residual risks
 
@@ -32,3 +39,8 @@ parsed as data and never executed. A stolen live capability token grants access 
 expiry. Production use would require authenticated workspaces, distributed quotas, encrypted
 object storage, backups with deletion propagation, secret rotation, and independent penetration
 testing.
+AI review can still miss semantic defects or produce false positives. Deterministic CI/security
+gates remain authoritative, low/medium model findings are advisory, and high/critical findings
+block until the App re-reviews a newer commit. Pull-request diffs are disclosed to the configured
+model provider, so private or regulated repositories need an approved provider and retention
+policy before enabling this design.
