@@ -9,6 +9,26 @@ The workflow deliberately does not execute pull-request code with App or model c
 from the diff and model is untrusted data. The deterministic policy—not the model—controls the
 review action.
 
+## Context-aware review
+
+The model receives a bounded context package rather than an isolated diff:
+
+- trusted excerpts from `README.md`, the architecture, threat model, and limitations on the PR's
+  base commit;
+- a deterministic RetrievalOps risk profile (`api`, `data`, `deployment`, `docs`, `retrieval`,
+  `security`, and/or `tests`);
+- clearly labelled, untrusted PR title/body and diff sections; and
+- a domain-specific checklist covering tenant isolation, retrieval/evaluation validity, data loss,
+  rollback safety, observability, concurrency, authorization, secrets, and missing tests.
+
+The model returns a summary, risk assessment, change types, and findings with impact, evidence, and
+a concrete fix. Every finding must cite a changed file and an actual added line. A nonexistent file,
+unchanged line, malformed schema, duplicate or unknown change type, oversized response, or more than
+25 findings invalidates the entire AI response and fails closed. This grounding rule prevents a
+fluent but unsubstantiated review from approving code.
+
+The design intentionally uses one bounded model call per eligible PR to keep cost and latency low.
+
 ## Approval gates
 
 Every gate must pass:
@@ -23,8 +43,9 @@ Every gate must pass:
    changes require manual administrator review.
 5. Every changed file has a reviewable textual patch, the PR is at most 300 files and 80,000 diff
    characters, and added lines do not resemble private keys or common access-token formats.
-6. The model call succeeds, returns the exact bounded JSON schema, and reports no high or critical
-   findings. Low and medium findings remain visible but do not block approval.
+6. The context-aware model call succeeds, returns the exact bounded JSON schema with evidence
+   grounded on added lines, and reports no high or critical findings. Low and medium findings remain
+   visible but do not block approval.
 
 New commits dismiss stale approvals. An unavailable API, malformed model response, missing secret,
 oversized/binary diff, or ambiguous workflow-to-PR association fails closed.
